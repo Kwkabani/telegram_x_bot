@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+    <h1>📈 Overview</h1>
+    <p>Real-time statistics for X Bot</p>
+</div>
+
+<div class="cards">
+    <div class="card"><div class="num">{{ total_users }}</div><div class="label">Total Users</div></div>
+    <div class="card"><div class="num">{{ connected_users }}</div><div class="label">Connected to X</div></div>
+    <div class="card"><div class="num">{{ active_posts }}</div><div class="label">Active Posts</div></div>
+    <div class="card"><div class="num">{{ total_posts }}</div><div class="label">Total Posts</div></div>
+    <div class="card"><div class="num">{{ deleted_posts }}</div><div class="label">Deleted</div></div>
+    <div class="card"><div class="num" style="color:#f87171">{{ failed_posts }}</div><div class="label">Failed</div></div>
+</div>
+
+<h3 style="margin-bottom:12px;font-size:15px;color:#999;">Recent Posts</h3>
+<table>
+    <thead><tr><th>User</th><th>Content</th><th>Status</th><th>Created</th></tr></thead>
+    <tbody>
+        {% for post, username in recent_posts %}
+        <tr>
+            <td>@{{ username or '?' }}</td>
+            <td><span class="truncate">{{ post.content[:80] }}</span></td>
+            <td>
+                {% if post.status.value == 'published' %}<span class="badge badge-green">active</span>
+                {% elif post.status.value == 'deleted' %}<span class="badge badge-gray">deleted</span>
+                {% elif post.status.value == 'failed' %}<span class="badge badge-red">failed</span>
+                {% else %}<span class="badge badge-yellow">{{ post.status.value }}</span>{% endif %}
+            </td>
+            <td class="text-muted">{{ post.created_at.strftime('%m/%d %H:%M') if post.created_at else '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-muted" style="text-align:center;padding:20px;">No posts yet</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

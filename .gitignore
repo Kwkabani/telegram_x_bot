@@ -1,0 +1,32 @@
+# Environment
+.env
+
+# Database
+data/
+*.db
+*.db-journal
+*.db-wal
+
+# Logs
+logs/
+*.log
+
+# Temp files
+temp/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Playwright
+playwright-browsers/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

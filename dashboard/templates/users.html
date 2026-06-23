@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+    <h1>👥 Users</h1>
+    <p>{{ users|length }} registered user{{ '' if users|length == 1 else 's' }}</p>
+</div>
+
+<div class="filter-bar">
+    <form method="get">
+        <input type="text" name="search" placeholder="Search by @ or ID" value="{{ search }}">
+        <button class="btn" style="background:#2a2a2a;color:#e1e1e1;padding:8px 14px;">Search</button>
+        {% if search %}<a href="/users" class="btn" style="background:#2a2a2a;color:#e1e1e1;padding:8px 14px;">Clear</a>{% endif %}
+    </form>
+</div>
+
+<table>
+    <thead><tr><th>ID</th><th>Telegram ID</th><th>X Username</th><th>X ID</th><th>Posts</th><th>Connected</th><th>Action</th></tr></thead>
+    <tbody>
+        {% for u in users %}
+        <tr>
+            <td>{{ u.id }}</td>
+            <td class="mono">{{ u.telegram_id }}</td>
+            <td>{{ '@' + u.x_username if u.x_username else '—' }}{% if u.banned %} <span class="badge badge-red">banned</span>{% endif %}</td>
+            <td class="mono text-muted">{{ u.x_user_id or '—' }}</td>
+            <td>{{ user_post_counts.get(u.id, 0) }}</td>
+            <td class="text-muted">{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '—' }}</td>
+            <td style="display:flex;gap:6px;flex-wrap:wrap;">
+                <a href="/posts?user_id={{ u.id }}" class="btn" style="background:#2a2a2a;color:#e1e1e1;">Posts</a>
+                {% if u.access_token and u.access_token.strip() %}
+                <form method="post" action="/users/{{ u.id }}/disconnect" onsubmit="return confirm('Disconnect @{{ u.x_username }} from bot?')">
+                    <button class="btn btn-danger btn-sm">Disconnect</button>
+                </form>
+                {% endif %}
+                <form method="post" action="/users/{{ u.id }}/ban" onsubmit="return confirm('{{ "Unban" if u.banned else "Ban" }} @{{ u.x_username or u.telegram_id }}?')">
+                    <button class="btn btn-sm" style="background:#3a3520;color:#facc15;">{{ "🔓 Unban" if u.banned else "🔒 Ban" }}</button>
+                </form>
+                <form method="post" action="/users/{{ u.id }}/delete" onsubmit="return confirm('Delete user @{{ u.x_username or u.telegram_id }} and ALL their posts? This cannot be undone!')">
+                    <button class="btn btn-danger btn-sm">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-muted" style="text-align:center;padding:20px;">No users found</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

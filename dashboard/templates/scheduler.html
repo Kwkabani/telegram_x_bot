@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+    <h1>⏱️ Scheduler</h1>
+    <p>Background tasks managed by APScheduler</p>
+</div>
+
+<div class="cards">
+    <div class="card"><div class="num">60s</div><div class="label">Delete Sweeper</div></div>
+    <div class="card"><div class="num">30s</div><div class="label">Repeat Checker</div></div>
+    <div class="card"><div class="num">1h</div><div class="label">Temp Cleanup</div></div>
+    <div class="card"><div class="num">24h</div><div class="label">Health Check</div></div>
+</div>
+
+<table>
+    <thead><tr><th>Job ID</th><th>Name</th><th>Interval</th><th>Grace Time</th><th>Description</th></tr></thead>
+    <tbody>
+        <tr><td class="mono">delete_sweeper</td><td>Delete expired posts</td><td>Every 60s</td><td>30s</td><td>Scans DB for published posts past delete_at and removes them via X API</td></tr>
+        <tr><td class="mono">repeat_checker</td><td>Check and process post repeats</td><td>Every 30s</td><td>30s</td><td>Publishes scheduled repeat variations with text randomization</td></tr>
+        <tr><td class="mono">temp_cleanup</td><td>Clean up temp files</td><td>Every 1h</td><td>120s</td><td>Removes downloaded media files older than 1 hour</td></tr>
+        <tr><td class="mono">health_check</td><td>Daily health check</td><td>Every 24h</td><td>3600s</td><td>Monitors DB size, stuck posts, temp dir; notifies admin if issues found</td></tr>
+    </tbody>
+</table>
+
+<p class="text-muted mt-2">ℹ️ All jobs run in the background asyncio event loop alongside the Telegram bot. No data persisted across restarts.</p>
+{% endblock %}

@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+    <h1>⚙️ Settings</h1>
+    <p>Control panel — changes apply instantly</p>
+</div>
+
+<div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid #2a2a2a;">
+    <a href="/settings?tab=messages" class="tab {{ 'active' if tab == 'messages' else '' }}" style="padding:10px 20px;text-decoration:none;color:#888;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-2px;{{ 'color:#6b9aff;border-color:#6b9aff;' if tab == 'messages' else '' }}">💬 Messages</a>
+    <a href="/settings?tab=features" class="tab {{ 'active' if tab == 'features' else '' }}" style="padding:10px 20px;text-decoration:none;color:#888;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-2px;{{ 'color:#6b9aff;border-color:#6b9aff;' if tab == 'features' else '' }}">🔧 Features</a>
+    <a href="/settings?tab=status" class="tab {{ 'active' if tab == 'status' else '' }}" style="padding:10px 20px;text-decoration:none;color:#888;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-2px;{{ 'color:#6b9aff;border-color:#6b9aff;' if tab == 'status' else '' }}">📊 Bot Status</a>
+</div>
+
+{% if tab == 'messages' %}
+<div style="display:grid;gap:14px;">
+    {% for msg in messages %}
+    <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:10px;padding:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <code style="color:#6b9aff;font-size:13px;">{{ msg.key }}</code>
+            {% if msg.is_overridden %}
+            <form method="post" action="/settings/messages/{{ msg.key }}/reset" style="margin:0;">
+                <button class="btn btn-sm" style="background:#3a1a1a;color:#f87171;">Reset to default</button>
+            </form>
+            {% endif %}
+        </div>
+        <form method="post" action="/settings/messages/{{ msg.key }}">
+            <textarea name="text" rows="3" style="width:100%;background:#0f0f0f;border:1px solid #333;color:#e1e1e1;padding:8px 12px;border-radius:6px;font-size:13px;font-family:inherit;">{{ msg.current }}</textarea>
+            <div style="display:flex;justify-content:space-between;margin-top:6px;">
+                <span class="text-muted" style="font-size:11px;">Default: <code style="color:#666;">{{ msg.default[:60] }}...</code></span>
+                <button class="btn" style="background:#2a2a2a;color:#e1e1e1;">Save</button>
+            </div>
+        </form>
+    </div>
+    {% endfor %}
+</div>
+
+{% elif tab == 'features' %}
+<div class="cards">
+    <div class="card">
+        <div class="label">🤖 Bot Status</div>
+        <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:14px;">{{ '🔴 Paused' if bot_paused else '🟢 Online' }}</span>
+            <form method="post" action="/settings/bot/pause">
+                <button class="btn" style="background:{{ '#3a3520' if not bot_paused else '#1a3a2a' }};color:{{ '#facc15' if not bot_paused else '#4ade80' }};">
+                    {{ 'Resume Bot' if bot_paused else 'Pause Bot' }}
+                </button>
+            </form>
+        </div>
+    </div>
+    <div class="card">
+        <div class="label">🔁 Repeats</div>
+        <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:14px;">{{ '✅ Enabled' if feature_repeats else '❌ Disabled' }}</span>
+            <form method="post" action="/settings/config/feature_repeats">
+                <input type="hidden" name="value" value="{{ 'false' if feature_repeats else 'true' }}">
+                <button class="btn" style="background:#2a2a2a;color:#e1e1e1;">Toggle</button>
+            </form>
+        </div>
+    </div>
+    <div class="card">
+        <div class="label">🖼️ Media Upload</div>
+        <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:14px;">{{ '✅ Enabled' if feature_media else '❌ Disabled' }}</span>
+            <form method="post" action="/settings/config/feature_media">
+                <input type="hidden" name="value" value="{{ 'false' if feature_media else 'true' }}">
+                <button class="btn" style="background:#2a2a2a;color:#e1e1e1;">Toggle</button>
+            </form>
+        </div>
+    </div>
+    <div class="card">
+        <div class="label">📊 Max Active Posts</div>
+        <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <form method="post" action="/settings/config/max_active_posts" style="display:flex;gap:8px;align-items:center;">
+                <input type="number" name="value" value="{{ max_active_posts }}" style="width:70px;padding:6px 8px;">
+                <button class="btn" style="background:#2a2a2a;color:#e1e1e1;padding:6px 12px;">Set</button>
+            </form>
+        </div>
+    </div>
+    <div class="card">
+        <div class="label">📊 Max Posts/Hour</div>
+        <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <form method="post" action="/settings/config/max_posts_per_hour" style="display:flex;gap:8px;align-items:center;">
+                <input type="number" name="value" value="{{ max_posts_per_hour }}" style="width:70px;padding:6px 8px;">
+                <button class="btn" style="background:#2a2a2a;color:#e1e1e1;padding:6px 12px;">Set</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% elif tab == 'status' %}
+<div class="cards">
+    <div class="card">
+        <div class="num" style="color:{{ '#4ade80' if not bot_paused else '#facc15' }};">{{ 'ONLINE' if not bot_paused else 'PAUSED' }}</div>
+        <div class="label">Bot Status</div>
+    </div>
+    <div class="card">
+        <div class="num" style="color:#6b9aff;">{{ total_users }}</div>
+        <div class="label">Total Users</div>
+    </div>
+    <div class="card">
+        <div class="num" style="color:#6b9aff;">{{ total_posts }}</div>
+        <div class="label">Total Posts</div>
+    </div>
+    <div class="card">
+        <div class="num" style="color:#4ade80;">{{ active_posts }}</div>
+        <div class="label">Active Posts</div>
+    </div>
+    <div class="card">
+        <div class="num" style="color:#f87171;">{{ failed_posts }}</div>
+        <div class="label">Failed Posts</div>
+    </div>
+    <div class="card">
+        <div class="num" style="color:#888;">{{ deleted_posts }}</div>
+        <div class="label">Deleted Posts</div>
+    </div>
+</div>
+
+<p class="text-muted">ℹ️ The database is shared between the bot and dashboard. All changes apply instantly without restart.</p>
+{% endif %}
+{% endblock %}

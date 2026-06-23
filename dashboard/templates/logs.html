@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+    <h1>📋 Logs</h1>
+    <p>Last {{ log_lines|length }} lines · <a href="/logs" style="color:#6b9aff;">refresh</a></p>
+</div>
+<div class="log-area">
+    {% for line in log_lines %}
+    <div class="line mono">{{ line }}</div>
+    {% else %}
+    <div class="text-muted">No log file found at logs/bot.log</div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header">
+    <h1>📝 Posts</h1>
+    <p>{{ active_posts }} active · {{ total_posts }} total</p>
+</div>
+
+<div class="filter-bar">
+    <form method="get">
+        <select name="status" onchange="this.form.submit()">
+            <option value="">All statuses</option>
+            <option value="published" {{ 'selected' if status_filter == 'published' else '' }}>Published</option>
+            <option value="pending" {{ 'selected' if status_filter == 'pending' else '' }}>Pending</option>
+            <option value="deleted" {{ 'selected' if status_filter == 'deleted' else '' }}>Deleted</option>
+            <option value="failed" {{ 'selected' if status_filter == 'failed' else '' }}>Failed</option>
+        </select>
+        {% if status_filter %}<a href="/posts" class="btn" style="background:#2a2a2a;color:#e1e1e1;padding:8px 14px;">Clear</a>{% endif %}
+    </form>
+</div>
+
+<table>
+    <thead><tr><th>#</th><th>User</th><th>Content</th><th>Status</th><th>Published</th><th>Delete At</th><th>Repeats</th><th>Action</th></tr></thead>
+    <tbody>
+        {% for post, username in posts %}
+        <tr>
+            <td class="mono text-muted">{{ post.id }}</td>
+            <td>@{{ username or '?' }}</td>
+            <td><span class="truncate">{{ post.content[:60] }}</span></td>
+            <td>
+                {% if post.status.value == 'published' %}<span class="badge badge-green">active</span>
+                {% elif post.status.value == 'deleted' %}<span class="badge badge-gray">deleted</span>
+                {% elif post.status.value == 'failed' %}<span class="badge badge-red">failed</span>
+                {% elif post.status.value == 'pending' %}<span class="badge badge-yellow">pending</span>
+                {% else %}<span class="badge">{{ post.status.value }}</span>{% endif %}
+            </td>
+            <td class="text-muted">{{ post.published_at.strftime('%m/%d %H:%M') if post.published_at else '—' }}</td>
+            <td class="text-muted">{{ post.delete_at.strftime('%m/%d %H:%M') if post.delete_at else '—' }}</td>
+            <td>{{ post.repeat_count }}{% if post.remaining_repeats > 0 %} ({{ post.remaining_repeats }} left){% endif %}</td>
+            <td>
+                <form method="post" action="/posts/{{ post.id }}/delete" onsubmit="return confirm('Delete post #{{ post.id }} from database?')">
+                    <button class="btn btn-danger btn-sm">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-muted" style="text-align:center;padding:20px;">No posts found</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
