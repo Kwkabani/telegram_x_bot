@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import asyncio
 import logging
+import os
 import signal
 import sys
 import threading
@@ -111,6 +112,17 @@ def main() -> None:
     setup_logging()
     logger.info("Starting Telegram X Bot...")
 
+    render_port = os.environ.get("PORT")
+    if render_port:
+        logger.info(f"Render mode detected (PORT={render_port}), starting web server in background")
+        thread = threading.Thread(
+            target=run_web_server_sync,
+            kwargs={"port": int(render_port)},
+            daemon=True,
+            name="web_render",
+        )
+        thread.start()
+
     request = HTTPXRequest(
         connect_timeout=30.0,
         read_timeout=30.0,
@@ -140,12 +152,14 @@ def main() -> None:
     )
 
 
-def run_web_server_sync() -> None:
+def run_web_server_sync(port: int = None) -> None:
     import uvicorn
     from web.app import app
 
-    logger.info(f"Starting web server on {WEB_HOST}:{WEB_PORT}")
-    uvicorn.run(app, host=WEB_HOST, port=WEB_PORT, log_level="info")
+    host = WEB_HOST
+    port = port or WEB_PORT
+    logger.info(f"Starting web server on {host}:{port}")
+    uvicorn.run(app, host=host, port=port, log_level="info")
 
 
 def start_dashboard_in_thread() -> None:
