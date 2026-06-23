@@ -1,10 +1,12 @@
 import logging
+import os
+from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
-from config import DATABASE_URL
+from config import DATABASE_URL, DB_FULL_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,10 @@ async def _migrate_oauth2_columns() -> None:
 
 async def init_db() -> None:
     from db.models import User, Post, TempMedia, BotConfig
+
+    db_dir = Path(DB_FULL_PATH).parent
+    db_dir.mkdir(parents=True, exist_ok=True)
+
     await enable_wal()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
