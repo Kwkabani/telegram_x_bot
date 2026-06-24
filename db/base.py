@@ -60,6 +60,26 @@ async def _migrate_oauth2_columns() -> None:
         await conn.commit()
 
 
+async def _migrate_cookies_column() -> None:
+    async with engine.connect() as conn:
+        result = await conn.execute(text("PRAGMA table_info(users)"))
+        columns = [row[1] for row in result]
+        if "cookies_data" not in columns:
+            await conn.execute(text("ALTER TABLE users ADD COLUMN cookies_data TEXT"))
+            logger.info("Added 'cookies_data' column to users table")
+        await conn.commit()
+
+
+async def _migrate_needs_login_column() -> None:
+    async with engine.connect() as conn:
+        result = await conn.execute(text("PRAGMA table_info(users)"))
+        columns = [row[1] for row in result]
+        if "needs_login" not in columns:
+            await conn.execute(text("ALTER TABLE users ADD COLUMN needs_login BOOLEAN DEFAULT 0"))
+            logger.info("Added 'needs_login' column to users table")
+        await conn.commit()
+
+
 async def init_db() -> None:
     from db.models import User, Post, TempMedia, BotConfig
 
@@ -71,6 +91,8 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
     await _migrate_banned_column()
     await _migrate_oauth2_columns()
+    await _migrate_cookies_column()
+    await _migrate_needs_login_column()
     logger.info("Database initialized")
 
 

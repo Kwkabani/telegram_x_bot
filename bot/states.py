@@ -3,8 +3,7 @@ from telegram.ext import ConversationHandler
 (
     MAIN_MENU,                      # 0
     AWAITING_LOGIN,                 # 1
-    AWAITING_OAUTH_PIN,             # 2 - OAuth 1.0a PIN
-    AWAITING_OAUTH_CODE,            # 3 - OAuth 2.0 PKCE code
+    AWAITING_CREDENTIALS,           # 2 - X username:password login
     AWAITING_POST_TEXT,             # 4
     AWAITING_POST_MEDIA,            # 5
     AWAITING_DELETE_TIME,           # 6

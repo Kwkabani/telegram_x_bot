@@ -35,6 +35,8 @@ class User(Base):
     oauth_token = Column(Text, nullable=True)
     oauth_refresh_token = Column(Text, nullable=True)
     token_expires_at = Column(DateTime, nullable=True)
+    cookies_data = Column(Text, nullable=True)
+    needs_login = Column(Boolean, default=False)
     default_delete_minutes = Column(Integer, default=0)
     default_repeat_count = Column(Integer, default=1)
     cooldown_minutes = Column(Integer, default=0)

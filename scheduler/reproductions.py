@@ -1,3 +1,4 @@
+import json
 import logging
 import random
 from datetime import datetime, timedelta
@@ -8,7 +9,7 @@ from sqlalchemy import update as sql_update
 
 from db.repository import PostRepository, UserRepository
 from db.models import Post, PostStatus
-from x_api.client import XAPIClient, XAPIError
+from x_browser.client import XBrowserClient
 from x_api.rate_limiter import RateLimiter
 from config import FERNET_KEY, DEFAULT_REPEAT_INTERVAL, MAX_CONTENT_LENGTH
 from utils import decrypt_token
@@ -50,7 +51,7 @@ class ReproductionManager:
 
                 try:
                     user = await user_repo.get_by_id(post.user_id)
-                    if not user or not user.access_token:
+                    if not user or not user.cookies_data:
                         continue
 
                     limiter = RateLimiter(post_repo)
@@ -67,9 +68,8 @@ class ReproductionManager:
                         post.content, repeats_so_far + 1, total
                     )
 
-                    access_token = decrypt_token(user.access_token, FERNET_KEY)
-                    access_token_secret = decrypt_token(user.access_token_secret, FERNET_KEY)
-                    client = XAPIClient(access_token, access_token_secret)
+                    cookies = json.loads(decrypt_token(user.cookies_data, FERNET_KEY))
+                    client = XBrowserClient(cookies)
                     media_path = post.media_path if post.media_path else None
                     tweet_id = await client.post_tweet(variation, media_path)
 

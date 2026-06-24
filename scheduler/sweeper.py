@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import datetime
 
@@ -5,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from db.repository import PostRepository, UserRepository
 from db.models import PostStatus
-from x_api.client import XAPIClient, XAPIError
+from x_browser.client import XBrowserClient
 from utils import decrypt_token
 from config import FERNET_KEY
 
@@ -41,17 +42,16 @@ class PostSweeper:
                         )
                         continue
 
-                    if not user.access_token:
-                        logger.error(f"No access token for user {user.id}")
+                    if not user.cookies_data:
+                        logger.error(f"No cookies for user {user.id}")
                         await repo.update_status(
                             post.id, PostStatus.FAILED,
-                            error_message="No access token"
+                            error_message="No cookies"
                         )
                         continue
 
-                    access_token = decrypt_token(user.access_token, FERNET_KEY)
-                    access_token_secret = decrypt_token(user.access_token_secret, FERNET_KEY)
-                    client = XAPIClient(access_token, access_token_secret)
+                    cookies = json.loads(decrypt_token(user.cookies_data, FERNET_KEY))
+                    client = XBrowserClient(cookies)
                     success = await client.delete_tweet(post.tweet_id)
 
                     if success:

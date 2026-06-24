@@ -25,7 +25,6 @@ from bot.keyboards import (
     delete_time_keyboard,
     login_keyboard,
     main_menu_keyboard,
-    oauth_help_keyboard,
     post_action_keyboard,
     repeat_keyboard,
     settings_keyboard,
@@ -49,11 +48,8 @@ from db.config_store import get_message, is_bot_paused
 from db.models import PostStatus
 from db.repository import PostRepository, UserRepository
 from utils import decrypt_token, encrypt_token
-from x_api.auth import (
-    get_auth_url, exchange_code, validate_token, extract_code_from_url,
-    verify_pin, validate_and_get_user,
-)
-from x_api.client import XAPIClient, XAPIError
+from x_browser.auth import login_with_credentials
+from x_browser.client import XBrowserClient
 from x_api.rate_limiter import RateLimiter
 
 warnings.filterwarnings("ignore", message="If 'per_message=False'")
@@ -118,7 +114,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await update.message.reply_text(msg)
         return ConversationHandler.END
 
-    if user and (user.access_token or user.oauth_token):
+    if user and user.cookies_data:
         msg = await get_message("welcome_existing")
         await update.message.reply_text(msg, reply_markup=main_menu_keyboard())
         return MAIN_MENU
@@ -132,177 +128,105 @@ async def login_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     query = update.callback_query
     await query.answer()
 
-    try:
-        url = get_auth_url(update.effective_user.id)
-    except Exception as e:
-        logger.error(f"Failed to generate auth URL: {e}")
-        await query.edit_message_text(
-            "❌ حدث خطأ أثناء تحضير رابط تسجيل الدخول. حاول مرة أخرى.",
-            reply_markup=login_keyboard(),
-        )
-        return AWAITING_LOGIN
-
     await query.edit_message_text(
         "🔐 *تسجيل الدخول إلى X*\n\n"
-        f"{url}\n\n"
-        "⚠️ الرابط صالح لمدة 24 ساعة.",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔗 فتح رابط تسجيل الدخول", url=url)],
-            [InlineKeyboardButton("❌ إلغاء", callback_data="cancel")],
-        ]),
+        "أرسل اسم المستخدم وكلمة المرور لحساب X بهذه الصيغة:\n\n"
+        "`username:password`\n\n"
+        "مثال: `myuser:MyP@ss123`\n\n"
+        "⚠️ كلمة المرور لا تُحفظ مطلقاً، بل تُستخدم فقط لتسجيل الدخول لمرة واحدة.",
+        reply_markup=cancel_keyboard(),
     )
-    return AWAITING_OAUTH_CODE
+    return AWAITING_CREDENTIALS
 
 
-async def receive_oauth_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    code = extract_code_from_url(update.message.text.strip())
-    if not code:
+async def receive_credentials(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if context.user_data.get("awaiting_2fa"):
+        code = update.message.text.strip()
+        context.user_data["2fa_code"] = code
+        context.user_data["2fa_event"].set()
+        await update.message.reply_text("🔄 جاري التحقق من الرمز...")
+        return MAIN_MENU
+
+    text = update.message.text.strip()
+    if ":" not in text:
         await update.message.reply_text(
-            "❌ الكود غير صالح. أرسل الرابط الكامل من شريط العنوان بعد التفويض.\n"
-            "أو أرسل الكود فقط (نص طويل من حروف وأرقام).",
-            reply_markup=login_keyboard(),
+            "❌ الصيغة خاطئة. أرسل الاسم والباسورد بهذه الصيغة:\n\n"
+            "`username:password`",
+            reply_markup=cancel_keyboard(),
         )
-        return AWAITING_OAUTH_CODE
+        return AWAITING_CREDENTIALS
 
-    await update.message.reply_text("🔄 جاري تبادل الكود والحصول على التوكن...")
+    username, password = text.split(":", 1)
+    if not username or not password:
+        await update.message.reply_text("❌ الاسم أو الباسورد فارغ.")
+        return AWAITING_CREDENTIALS
+
+    await update.message.reply_text("🔄 جاري تسجيل الدخول إلى X...")
+
+    context.user_data["2fa_event"] = asyncio.Event()
+    context.user_data["2fa_code"] = None
+    context.user_data["awaiting_2fa"] = False
+
+    async def on_2fa():
+        await context.bot.send_message(
+            chat_id=update.effective_user.id,
+            text="🔐 *مطلوب رمز التحقق (2FA)*\n\n"
+                 "أرسل رمز التحقق المرسل إلى هاتفك أو بريدك الإلكتروني:",
+        )
+        context.user_data["awaiting_2fa"] = True
+        await context.user_data["2fa_event"].wait()
+        code = context.user_data["2fa_code"]
+        context.user_data.pop("2fa_event", None)
+        context.user_data.pop("2fa_code", None)
+        context.user_data.pop("awaiting_2fa", None)
+        return code
 
     try:
-        access_token, refresh_token, expires_in = await exchange_code(
-            update.effective_user.id, code
+        x_user_id, x_username, cookies = await login_with_credentials(
+            username, password, on_2fa=on_2fa
         )
-    except ValueError as e:
-        await update.message.reply_text(
-            f"❌ {e}\n\n"
-            "ارجع للقائمة وحاول تسجيل الدخول مرة أخرى.",
-            reply_markup=login_keyboard(),
-        )
-        return AWAITING_LOGIN
     except Exception as e:
-        logger.error(f"Code exchange error: {e}")
+        logger.error(f"Login error: {e}")
         await update.message.reply_text(
-            "❌ فشل تبادل الكود. قد يكون منتهي الصلاحية أو غير صحيح.\n"
-            "حاول تسجيل الدخول مرة أخرى.",
+            "❌ فشل تسجيل الدخول. تحقق من البيانات وحاول مرة أخرى.",
             reply_markup=login_keyboard(),
         )
         return AWAITING_LOGIN
 
-    await update.message.reply_text("🔄 جاري التحقق من الحساب...")
-
-    x_user_id, x_username = await validate_token(access_token)
-    if not x_user_id:
+    if not cookies:
         await update.message.reply_text(
-            "❌ تعذر الحصول على معلومات الحساب. حاول مرة أخرى.",
+            "❌ فشل تسجيل الدخول. تحقق من الاسم والباسورد وحاول مرة أخرى.",
             reply_markup=login_keyboard(),
         )
         return AWAITING_LOGIN
+
+    encrypted_cookies = encrypt_token(json.dumps(cookies), FERNET_KEY)
 
     telegram_id = update.effective_user.id
-    expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
     session = async_session_factory()
     async with session:
         repo = UserRepository(session)
-        existing = await repo.get_by_telegram_id(telegram_id)
-        encrypted_token = encrypt_token(access_token, FERNET_KEY)
-        encrypted_refresh = encrypt_token(refresh_token, FERNET_KEY) if refresh_token else ""
-        if existing:
+        user = await repo.get_by_telegram_id(telegram_id)
+        if user:
             await repo.update(
-                existing,
+                user,
                 x_user_id=x_user_id,
                 x_username=x_username,
-                oauth_token=encrypted_token,
-                oauth_refresh_token=encrypted_refresh,
-                token_expires_at=expires_at,
+                cookies_data=encrypted_cookies,
+                needs_login=False,
             )
         else:
             await repo.create(
                 telegram_id=telegram_id,
                 x_user_id=x_user_id,
                 x_username=x_username,
-                oauth_token=encrypted_token,
-                oauth_refresh_token=encrypted_refresh,
-                token_expires_at=expires_at,
+                cookies_data=encrypted_cookies,
             )
 
     await update.message.reply_text(
         f"✅ *تم تسجيل الدخول بنجاح!*\n\n"
         f"مرحباً @{x_username} 🎉\n"
-        "تم حفظ بيانات الدخول بشكل آمن.\n"
-        "يمكنك الآن البدء بالنشر.",
-        reply_markup=main_menu_keyboard(),
-    )
-    return MAIN_MENU
-
-
-async def receive_pin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    pin = update.message.text.strip()
-
-    if not pin.isdigit() or len(pin) < 6:
-        await update.message.reply_text(
-            "❌ الـ PIN غير صالح. أرسل الأرقام فقط (6-7 أرقام).",
-            reply_markup=login_keyboard(),
-        )
-        return AWAITING_LOGIN
-
-    await update.message.reply_text("🔄 جاري التحقق من الـ PIN...")
-
-    try:
-        access_token, access_token_secret = verify_pin(
-            update.effective_user.id, pin
-        )
-    except ValueError as e:
-        await update.message.reply_text(
-            f"❌ {e}\n\n"
-            "ارجع للقائمة وحاول تسجيل الدخول مرة أخرى.",
-            reply_markup=login_keyboard(),
-        )
-        return AWAITING_LOGIN
-    except Exception as e:
-        logger.error(f"PIN verification error: {e}")
-        await update.message.reply_text(
-            "❌ فشل التحقق من الـ PIN. قد يكون منتهي الصلاحية أو غير صحيح.\n"
-            "حاول تسجيل الدخول مرة أخرى.",
-            reply_markup=login_keyboard(),
-        )
-        return AWAITING_LOGIN
-
-    x_user_id, x_username = await validate_and_get_user(
-        access_token, access_token_secret
-    )
-    if not x_user_id:
-        await update.message.reply_text(
-            "❌ تعذر الحصول على معلومات الحساب. حاول مرة أخرى.",
-            reply_markup=login_keyboard(),
-        )
-        return AWAITING_LOGIN
-
-    telegram_id = update.effective_user.id
-    session = async_session_factory()
-    async with session:
-        repo = UserRepository(session)
-        existing = await repo.get_by_telegram_id(telegram_id)
-        encrypted_at = encrypt_token(access_token, FERNET_KEY)
-        encrypted_ats = encrypt_token(access_token_secret, FERNET_KEY)
-        if existing:
-            await repo.update(
-                existing,
-                x_user_id=x_user_id,
-                x_username=x_username,
-                access_token=encrypted_at,
-                access_token_secret=encrypted_ats,
-            )
-        else:
-            await repo.create(
-                telegram_id=telegram_id,
-                x_user_id=x_user_id,
-                x_username=x_username,
-                access_token=encrypted_at,
-                access_token_secret=encrypted_ats,
-            )
-
-    await update.message.reply_text(
-        f"✅ *تم تسجيل الدخول بنجاح!*\n\n"
-        f"مرحباً @{x_username} 🎉\n"
-        "تم حفظ بيانات الدخول بشكل آمن.\n"
+        "تم حفظ الجلسة بشكل آمن.\n"
         "يمكنك الآن البدء بالنشر.",
         reply_markup=main_menu_keyboard(),
     )
@@ -568,7 +492,7 @@ async def confirm_publish(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             post_repo = PostRepository(session)
             user = await user_repo.get_by_telegram_id(telegram_id)
 
-            if not user or not (user.access_token or user.oauth_token):
+            if not user or not user.cookies_data:
                 await query.edit_message_text(
                     "❌ حساب X غير مرتبط. الرجاء تسجيل الدخول أولاً.",
                     reply_markup=login_keyboard(),
@@ -595,13 +519,8 @@ async def confirm_publish(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
             await query.edit_message_text("🔄 جاري النشر على X...")
 
-            if user.oauth_token:
-                bearer_token = decrypt_token(user.oauth_token, FERNET_KEY)
-                client = XAPIClient(bearer_token)
-            else:
-                access_token = decrypt_token(user.access_token, FERNET_KEY)
-                access_token_secret = decrypt_token(user.access_token_secret, FERNET_KEY)
-                client = XAPIClient(access_token, access_token_secret)
+            cookies = json.loads(decrypt_token(user.cookies_data, FERNET_KEY))
+            client = XBrowserClient(cookies)
 
             media_path = None
             if data.get("media_file_id"):
@@ -644,17 +563,10 @@ async def confirm_publish(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
             await query.edit_message_text(msg, reply_markup=main_menu_keyboard())
 
-        except XAPIError as e:
-            logger.error(f"Publish error: {e}")
-            await query.edit_message_text(
-                f"❌ حدث خطأ أثناء النشر:\n{str(e)[:200]}",
-                reply_markup=back_keyboard(),
-            )
-            return MAIN_MENU
         except Exception as e:
             logger.error(f"Publish error: {e}")
             await query.edit_message_text(
-                f"❌ حدث خطأ غير متوقع أثناء النشر.\n{str(e)[:200]}",
+                f"❌ حدث خطأ أثناء النشر:\n{str(e)[:200]}",
                 reply_markup=back_keyboard(),
             )
             return MAIN_MENU
@@ -761,15 +673,10 @@ async def delete_post_by_id(query, context: ContextTypes.DEFAULT_TYPE, post_id: 
             await query.edit_message_text("❌ هذا المنشور ليس لك.")
             return MAIN_MENU
 
-        if post.tweet_id:
+        if post.tweet_id and user.cookies_data:
             try:
-                if user.oauth_token:
-                    bearer_token = decrypt_token(user.oauth_token, FERNET_KEY)
-                    client = XAPIClient(bearer_token)
-                else:
-                    access_token = decrypt_token(user.access_token, FERNET_KEY)
-                    access_token_secret = decrypt_token(user.access_token_secret, FERNET_KEY)
-                    client = XAPIClient(access_token, access_token_secret)
+                cookies = json.loads(decrypt_token(user.cookies_data, FERNET_KEY))
+                client = XBrowserClient(cookies)
                 await client.delete_tweet(post.tweet_id)
                 logger.info(f"Deleted tweet {post.tweet_id} for user {user.id}")
             except Exception as e:
@@ -885,6 +792,8 @@ async def handle_confirm_logout(update: Update, context: ContextTypes.DEFAULT_TY
                     oauth_token="",
                     oauth_refresh_token="",
                     token_expires_at=None,
+                    cookies_data="",
+                    needs_login=False,
                     default_delete_minutes=0,
                     default_repeat_count=1,
                     cooldown_minutes=0,
@@ -997,12 +906,8 @@ def get_conversation_handler() -> ConversationHandler:
                 CallbackQueryHandler(login_button, pattern="^login$"),
                 CallbackQueryHandler(main_menu_handler, pattern="^cancel$"),
             ],
-            AWAITING_OAUTH_PIN: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_pin),
-                CallbackQueryHandler(main_menu_handler, pattern="^cancel$"),
-            ],
-            AWAITING_OAUTH_CODE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_oauth_code),
+            AWAITING_CREDENTIALS: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_credentials),
                 CallbackQueryHandler(main_menu_handler, pattern="^cancel$"),
             ],
             MAIN_MENU: [
