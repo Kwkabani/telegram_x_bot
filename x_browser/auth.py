@@ -12,6 +12,12 @@ logger = logging.getLogger(__name__)
 SCREENSHOT_DIR = Path(__file__).parent.parent / "logs" / "debug_screenshots"
 
 
+class ScreenshotError(Exception):
+    def __init__(self, message: str, screenshot_path: str = ""):
+        super().__init__(message)
+        self.screenshot_path = screenshot_path
+
+
 async def _save_debug_screenshot(page, name: str) -> str:
     SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -142,20 +148,20 @@ async def login_with_credentials(
         logger.info(f"Login result: {login_result}")
 
         if login_result == "verify_email":
-            await _save_debug_screenshot(page, "verify_email")
-            raise Exception("X requires email verification. Check your email inbox and try again.")
+            sp = await _save_debug_screenshot(page, "verify_email")
+            raise ScreenshotError("X requires email verification. Check your email inbox and try again.", sp)
 
         if login_result == "unusual":
-            await _save_debug_screenshot(page, "unusual_activity")
-            raise Exception("X detected unusual login activity. Please log in manually from your phone to verify.")
+            sp = await _save_debug_screenshot(page, "unusual_activity")
+            raise ScreenshotError("X detected unusual login activity. Please log in manually from your phone to verify.", sp)
 
         if login_result == "timeout":
-            await _save_debug_screenshot(page, "login_timeout")
-            raise Exception("Login timed out after 60 seconds. This may be due to slow connection or X blocking automation.")
+            sp = await _save_debug_screenshot(page, "login_timeout")
+            raise ScreenshotError("Login timed out after 60 seconds.", sp)
 
         if login_result not in ("home", "other"):
-            await _save_debug_screenshot(page, "unknown_state")
-            raise Exception(f"Unexpected page after login: {page.url[:100]}")
+            sp = await _save_debug_screenshot(page, "unknown_state")
+            raise ScreenshotError(f"Unexpected page after login: {page.url[:100]}", sp)
 
         # ── Step 5: Collect cookies ──
         await page.wait_for_timeout(2000)
@@ -189,13 +195,16 @@ async def login_with_credentials(
         logger.info(f"Login successful for user {x_username}")
         return x_user_id, x_username, cookies
 
+    except ScreenshotError:
+        raise
     except Exception as e:
         logger.error(f"Login failed: {e}")
+        sp = ""
         try:
-            await _save_debug_screenshot(page, "login_failed")
+            sp = await _save_debug_screenshot(page, "login_failed")
         except Exception:
             pass
-        raise
+        raise ScreenshotError(str(e), sp) from e
     finally:
         await pm.close_context(context)
 

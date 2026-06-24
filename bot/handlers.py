@@ -48,7 +48,7 @@ from db.config_store import get_message, is_bot_paused
 from db.models import PostStatus
 from db.repository import PostRepository, UserRepository
 from utils import decrypt_token, encrypt_token
-from x_browser.auth import login_with_credentials
+from x_browser.auth import login_with_credentials, ScreenshotError
 from x_browser.client import XBrowserClient
 from x_api.rate_limiter import RateLimiter
 
@@ -213,26 +213,38 @@ async def receive_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             username, password, on_2fa=on_2fa,
             progress_callback=progress_callback,
         )
-    except Exception as e:
-        logger.error(f"Login error: {e}")
-        error_msg = str(e)
-        if "timed out" in error_msg.lower() or "timeout" in error_msg.lower():
-            display = "⏱️ انتهت مهلة تسجيل الدخول (بطء الشبكة أو X يمنع الأتمتة). حاول مرة أخرى لاحقاً."
-        elif "verify_email" in error_msg.lower() or "email" in error_msg.lower():
+    except ScreenshotError as se:
+        logger.error(f"Login error: {se}")
+        error_msg = str(se)
+        if "verify_email" in error_msg.lower() or "email" in error_msg.lower():
             display = "📧 X يطلب تأكيد البريد الإلكتروني. تفقد بريدك وأكد الدخول، ثم حاول مرة أخرى."
         elif "unusual" in error_msg.lower() or "suspicious" in error_msg.lower():
             display = "🔒 X اكتشف محاولة دخول غير معتادة. سجل الدخول من متصفح هاتفك أولاً لتأكيد الحساب."
-        elif "no cookies" in error_msg.lower():
-            display = "❌ لم يتم استلام كوكيز بعد تسجيل الدخول. حاول مرة أخرى."
-        elif "2FA" in error_msg:
-            display = "🔐 مطلوب رمز تحقق (2FA). أرسل الرمز المستلم."
+        elif "timed out" in error_msg.lower() or "timeout" in error_msg.lower():
+            display = "⏱️ انتهت مهلة تسجيل الدخول (بطء الشبكة أو X يمنع الأتمتة). حاول مرة أخرى لاحقاً."
         else:
             display = "❌ فشل تسجيل الدخول. تحقق من اسم المستخدم وكلمة المرور."
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=display,
-            reply_markup=login_keyboard(),
-        )
+        await context.bot.send_message(chat_id=chat_id, text=display, reply_markup=login_keyboard())
+        if se.screenshot_path and ADMIN_TELEGRAM_ID:
+            try:
+                with open(se.screenshot_path, "rb") as f:
+                    await context.bot.send_photo(
+                        chat_id=ADMIN_TELEGRAM_ID,
+                        photo=f,
+                        caption=f"❌ فشل تسجيل دخول @{username}\n{error_msg[:200]}",
+                    )
+                os.remove(se.screenshot_path)
+                logger.info(f"Debug screenshot sent to admin and deleted: {se.screenshot_path}")
+            except Exception as ex:
+                logger.error(f"Failed to send screenshot to admin: {ex}")
+        context.user_data.pop("x_username_input", None)
+        context.user_data.pop("login_username_msg_id", None)
+        return AWAITING_LOGIN
+
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        display = "❌ فشل تسجيل الدخول. تحقق من اسم المستخدم وكلمة المرور."
+        await context.bot.send_message(chat_id=chat_id, text=display, reply_markup=login_keyboard())
         context.user_data.pop("x_username_input", None)
         context.user_data.pop("login_username_msg_id", None)
         return AWAITING_LOGIN
