@@ -30,6 +30,20 @@ async def _save_debug_screenshot(page, name: str) -> str:
     return path
 
 
+async def _try_selectors(page, selectors: list, timeout: int = 15000):
+    """Try each selector in sequence, return the first visible match."""
+    per = max(3000, timeout // len(selectors))
+    last_error = None
+    for sel in selectors:
+        try:
+            loc = page.locator(sel)
+            await loc.wait_for(state="visible", timeout=per)
+            return loc
+        except Exception as e:
+            last_error = e
+    raise Exception(f"No selector matched a visible element: {selectors}. Last error: {last_error}")
+
+
 async def _get_page_text(page) -> str:
     try:
         text = await page.inner_text("body")
@@ -49,12 +63,26 @@ async def _wait_for_login_complete(page, timeout: int = 60000) -> str:
     import asyncio
     deadline = datetime.utcnow().timestamp() + (timeout / 1000)
 
+    home_selectors = [
+        '[data-testid="AppTabBar_Home_Link"]',
+        '[data-testid="SideNav_NewTweet_Button"]',
+        '[data-testid="primaryColumn"]',
+        'a[data-testid="AppTabBar_Profile_Link"]',
+    ]
+
     while datetime.utcnow().timestamp() < deadline:
         await asyncio.sleep(1)
         url = page.url.lower()
 
         if "login" in url or "i/flow" in url:
             continue
+
+        for sel in home_selectors:
+            try:
+                if await page.locator(sel).is_visible(timeout=1000):
+                    return "home"
+            except Exception:
+                pass
 
         if "/home" in url or "/explore" in url or "/notifications" in url or "/messages" in url:
             return "home"
@@ -68,6 +96,13 @@ async def _wait_for_login_complete(page, timeout: int = 60000) -> str:
         if any(kw in body_text for kw in ["unusual login", "suspicious activity", "confirm it's you",
                                            "enter your phone", "confirm your phone"]):
             return "unusual"
+
+        if any(kw in body_text for kw in ["enter your phone number or username",
+                                           "confirm your username", "enter your username"]):
+            return "unusual"
+
+        if any(kw in body_text for kw in ["captcha", "prove you're human", "security check"]):
+            return "captcha"
 
         if url != "about:blank" and "x.com" in url and not _is_on_login_page(page):
             return "other"
@@ -89,17 +124,34 @@ async def login_with_credentials(
         if progress_callback:
             await progress_callback("🔄 فتح صفحة تسجيل الدخول...")
 
+        # ── Console & error logging ──
+        page.on("console", lambda msg: logger.info(f"[BROWSER] {msg.type}: {msg.text[:200]}"))
+        page.on("pageerror", lambda err: logger.error(f"[BROWSER_ERROR] {err}"))
+
         await page.goto("https://x.com/login", wait_until="domcontentloaded", timeout=60000)
-        await page.wait_for_load_state("networkidle", timeout=30000)
+        await page.wait_for_timeout(5000)
+
+        # ── Step screenshots dir ──
+        step = 0
 
         # ── Step 1: Username ──
+        step += 1
+        await _save_debug_screenshot(page, f"login_step{step}_before_username")
         if progress_callback:
             await progress_callback("🔄 إدخال اسم المستخدم...")
-        username_input = page.locator('input[autocomplete="username"]')
-        await username_input.wait_for(state="visible", timeout=15000)
+        username_input = await _try_selectors(page, [
+            'input[autocomplete="username"]',
+            'input[name="text"]',
+            'input[data-testid="ocfEnterTextTextInput"]',
+        ])
         await username_input.fill(username)
-        await page.locator('button:has-text("Next"), span:has-text("Next")').first.click()
+        await page.locator(
+            'button:has-text("Next"), span:has-text("Next"), '
+            'button[type="submit"], div[role="button"]:has-text("Next"), '
+            '[data-testid*="Login"], [data-testid*="Next"]'
+        ).first.click()
         await page.wait_for_timeout(2000)
+        await _save_debug_screenshot(page, f"login_step{step}_after_username")
 
         # ── Step 1b: Unusual activity check (enter username again) ──
         try:
@@ -108,19 +160,31 @@ async def login_with_credentials(
                 if progress_callback:
                     await progress_callback("🔄 التحقق من النشاط غير المعتاد...")
                 await unusual.fill(username)
-                await page.locator('button:has-text("Next"), span:has-text("Next")').first.click()
+                await page.locator(
+                    'button:has-text("Next"), span:has-text("Next"), '
+                    'button[type="submit"], div[role="button"]:has-text("Next")'
+                ).first.click()
                 await page.wait_for_timeout(2000)
         except Exception:
             pass
 
         # ── Step 2: Password ──
+        step += 1
+        await _save_debug_screenshot(page, f"login_step{step}_before_password")
         if progress_callback:
             await progress_callback("🔄 إدخال كلمة المرور...")
-        password_input = page.locator('input[autocomplete="current-password"]')
-        await password_input.wait_for(state="visible", timeout=15000)
+        password_input = await _try_selectors(page, [
+            'input[autocomplete="current-password"]',
+            'input[type="password"]',
+        ])
         await password_input.fill(password)
-        await page.locator('button:has-text("Log in"), span:has-text("Log in")').first.click()
+        await page.locator(
+            'button:has-text("Log in"), span:has-text("Log in"), '
+            'button[type="submit"], div[role="button"]:has-text("Log in"), '
+            '[data-testid*="Login"]'
+        ).first.click()
         await page.wait_for_timeout(2000)
+        await _save_debug_screenshot(page, f"login_step{step}_after_password")
 
         # ── Step 3: 2FA ──
         try:
@@ -131,7 +195,10 @@ async def login_with_credentials(
                         await progress_callback("🔄 في انتظار رمز التحقق...")
                     code = await on_2fa()
                     await two_fa_input.fill(code)
-                    await page.locator('button:has-text("Next"), span:has-text("Next")').first.click()
+                    await page.locator(
+                        'button:has-text("Next"), span:has-text("Next"), '
+                        'button[type="submit"], div[role="button"]:has-text("Next")'
+                    ).first.click()
                     await page.wait_for_timeout(3000)
                 else:
                     raise Exception("2FA required but no handler provided")
@@ -141,11 +208,14 @@ async def login_with_credentials(
             pass
 
         # ── Step 4: Wait for post-login page ──
+        step += 1
+        await _save_debug_screenshot(page, f"login_step{step}_before_wait")
         if progress_callback:
             await progress_callback("🔄 جاري التحقق من تسجيل الدخول...")
 
         login_result = await _wait_for_login_complete(page, timeout=60000)
         logger.info(f"Login result: {login_result}")
+        await _save_debug_screenshot(page, f"login_step{step}_result_{login_result}")
 
         if login_result == "verify_email":
             sp = await _save_debug_screenshot(page, "verify_email")
@@ -154,6 +224,10 @@ async def login_with_credentials(
         if login_result == "unusual":
             sp = await _save_debug_screenshot(page, "unusual_activity")
             raise ScreenshotError("X detected unusual login activity. Please log in manually from your phone to verify.", sp)
+
+        if login_result == "captcha":
+            sp = await _save_debug_screenshot(page, "captcha")
+            raise ScreenshotError("X requires a CAPTCHA. Please log in manually from your phone to verify.", sp)
 
         if login_result == "timeout":
             sp = await _save_debug_screenshot(page, "login_timeout")
@@ -204,6 +278,15 @@ async def login_with_credentials(
             sp = await _save_debug_screenshot(page, "login_failed")
         except Exception:
             pass
+        try:
+            html_path = SCREENSHOT_DIR / f"login_failed_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.html"
+            SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+            html = await page.content()
+            with open(str(html_path), "w", encoding="utf-8") as f:
+                f.write(html)
+            logger.info(f"Debug HTML saved: {html_path}")
+        except Exception:
+            pass
         raise ScreenshotError(str(e), sp) from e
     finally:
         await pm.close_context(context)
@@ -215,7 +298,8 @@ async def validate_cookies(cookies: list) -> Tuple[Optional[str], Optional[str]]
     page = await context.new_page()
 
     try:
-        await page.goto("https://x.com/home", wait_until="networkidle", timeout=30000)
+        await page.goto("https://x.com/home", wait_until="domcontentloaded", timeout=30000)
+        await page.wait_for_timeout(5000)
 
         x_username = None
         try:
