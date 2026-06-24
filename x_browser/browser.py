@@ -1,10 +1,29 @@
 import asyncio
 import logging
+import os
+import subprocess
+import sys
 from typing import Optional
 
 from playwright.async_api import async_playwright, Browser, BrowserContext
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_browser_installed() -> None:
+    cache_dir = os.environ.get(
+        "PLAYWRIGHT_BROWSERS_PATH",
+        os.path.join(os.path.expanduser("~"), ".cache", "ms-playwright"),
+    )
+    if os.path.isdir(cache_dir):
+        for entry in os.listdir(cache_dir):
+            if entry.startswith("chromium"):
+                return
+    logger.info("Chromium browser not found, installing...")
+    subprocess.check_call(
+        [sys.executable, "-m", "playwright", "install", "chromium"],
+    )
+    logger.info("Chromium browser installed")
 
 STEALTH_SCRIPT = """
 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -40,6 +59,7 @@ class PlaywrightManager:
     async def get_browser(self) -> Browser:
         async with self._lock:
             if self._browser is None or not self._browser.is_connected():
+                _ensure_browser_installed()
                 pw = await async_playwright().start()
                 self._browser = await pw.chromium.launch(
                     headless=True,

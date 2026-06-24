@@ -3,7 +3,6 @@ import asyncio
 import logging
 import os
 import signal
-import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -25,25 +24,6 @@ from utils import setup_logging
 logger = logging.getLogger(__name__)
 
 
-def _ensure_browser_installed() -> None:
-    import os as _os
-    cache_dir = _os.environ.get(
-        "PLAYWRIGHT_BROWSERS_PATH",
-        _os.path.join(_os.path.expanduser("~"), ".cache", "ms-playwright"),
-    )
-    if _os.path.isdir(cache_dir):
-        for entry in _os.listdir(cache_dir):
-            if entry.startswith("chromium"):
-                return
-    logger.info("Chromium browser not found, installing...")
-    subprocess.check_call(
-        [sys.executable, "-m", "playwright", "install", "chromium"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    logger.info("Chromium browser installed")
-
-
 async def post_init(application: Application) -> None:
     logger.info("Initializing bot...")
     try:
@@ -54,8 +34,6 @@ async def post_init(application: Application) -> None:
 
     await init_db()
     logger.info("Database initialized")
-
-    _ensure_browser_installed()
 
     scheduler = AsyncIOScheduler()
     session_factory = async_session_factory
