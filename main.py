@@ -154,12 +154,16 @@ def main() -> None:
 
 def run_web_server_sync(port: int = None) -> None:
     import uvicorn
+    import traceback
     from web.app import app
 
-    host = WEB_HOST
-    port = port or WEB_PORT
-    logger.info(f"Starting web server on {host}:{port}")
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    try:
+        host = WEB_HOST
+        port = port or WEB_PORT
+        logger.info(f"Starting web server on {host}:{port}")
+        uvicorn.run(app, host=host, port=port, log_level="info", access_log=True)
+    except Exception:
+        logger.critical(f"Web server failed to start:\n{traceback.format_exc()}")
 
 
 def start_dashboard_in_thread() -> None:
