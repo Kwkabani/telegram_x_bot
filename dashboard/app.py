@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="X Bot Dashboard", version="1.0.0")
+app = FastAPI(title="X Bot Dashboard", version="3.1.0")
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -55,6 +55,14 @@ def require_auth(func):
             return RedirectResponse(url="/login?next_url=" + request.url.path)
         return await func(request, *args, **kwargs)
     return wrapper
+
+
+# ─── Health ─────────────────────────────────────────────────────────
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "version": "3.1.0"}
 
 
 # ─── Routes ─────────────────────────────────────────────────────────
@@ -99,7 +107,7 @@ async def overview(request: Request):
 
         connected_users = (await session.execute(
             select(func.count(User.id)).where(
-                User.access_token.isnot(None), User.access_token != ""
+                User.cookies_data.isnot(None), User.cookies_data != ""
             )
         )).scalar() or 0
 
@@ -181,6 +189,8 @@ async def disconnect_user(request: Request, user_id: int):
                 user,
                 x_user_id=None, x_username=None,
                 access_token="", access_token_secret="",
+                cookies_data="",
+                needs_login=True,
                 default_delete_minutes=0, default_repeat_count=1, cooldown_minutes=0,
             )
     return RedirectResponse(url="/users", status_code=303)

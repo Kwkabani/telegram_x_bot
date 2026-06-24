@@ -12,7 +12,7 @@ from telegram import error as telegram_error
 from telegram.ext import Application, CommandHandler
 from telegram.request import HTTPXRequest
 
-from config import BOT_TOKEN, DASHBOARD_PORT, WEB_HOST, WEB_PORT, PROJECT_ROOT
+from config import BOT_TOKEN, WEB_PORT, PROJECT_ROOT
 from singleton import BotSingleton
 from db.base import init_db, async_session_factory
 from bot.handlers import get_conversation_handler, start, notify_admin
@@ -106,22 +106,23 @@ async def conflict_handler(update, context):
 
 
 def main() -> None:
-    if "--web" in sys.argv:
-        return run_web_server_sync()
-
     setup_logging()
     logger.info("Starting Telegram X Bot...")
 
     render_port = os.environ.get("PORT")
     if render_port:
-        logger.info(f"Render mode detected (PORT={render_port}), starting web server in background")
-        thread = threading.Thread(
-            target=run_web_server_sync,
-            kwargs={"host": "0.0.0.0", "port": int(render_port)},
-            daemon=True,
-            name="web_render",
-        )
-        thread.start()
+        logger.info(f"Render mode detected (PORT={render_port}), starting dashboard on main port")
+        target_port = int(render_port)
+    else:
+        target_port = WEB_PORT
+
+    thread = threading.Thread(
+        target=run_web_server_sync,
+        kwargs={"host": "0.0.0.0", "port": target_port},
+        daemon=True,
+        name="web_render",
+    )
+    thread.start()
 
     request = HTTPXRequest(
         connect_timeout=30.0,
@@ -142,9 +143,6 @@ def main() -> None:
     application.add_handler(get_conversation_handler())
     application.add_error_handler(conflict_handler)
 
-    if "--dashboard" in sys.argv:
-        start_dashboard_in_thread()
-
     application.run_polling(
         allowed_updates=["message", "callback_query"],
         bootstrap_retries=3,
@@ -152,31 +150,16 @@ def main() -> None:
     )
 
 
-def run_web_server_sync(host: str = None, port: int = None) -> None:
+def run_web_server_sync(host: str = "0.0.0.0", port: int = 5000) -> None:
     import uvicorn
     import traceback
-    from web.app import app
-
-    try:
-        host = host or WEB_HOST
-        port = port or WEB_PORT
-        logger.info(f"Starting web server on {host}:{port}")
-        uvicorn.run(app, host=host, port=port, log_level="info", access_log=True)
-    except Exception:
-        logger.critical(f"Web server failed to start:\n{traceback.format_exc()}")
-
-
-def start_dashboard_in_thread() -> None:
-    import uvicorn
     from dashboard.app import app
 
-    def _run():
-        logger.info(f"Starting dashboard on 0.0.0.0:{DASHBOARD_PORT}")
-        uvicorn.run(app, host="0.0.0.0", port=DASHBOARD_PORT, log_level="info")
-
-    thread = threading.Thread(target=_run, daemon=True, name="dashboard")
-    thread.start()
-    logger.info("Dashboard thread started")
+    try:
+        logger.info(f"Starting dashboard server on {host}:{port}")
+        uvicorn.run(app, host=host, port=port, log_level="info", access_log=True)
+    except Exception:
+        logger.critical(f"Dashboard server failed to start:\n{traceback.format_exc()}")
 
 
 if __name__ == "__main__":

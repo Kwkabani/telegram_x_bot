@@ -26,7 +26,7 @@
             <td class="text-muted">{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '—' }}</td>
             <td style="display:flex;gap:6px;flex-wrap:wrap;">
                 <a href="/posts?user_id={{ u.id }}" class="btn" style="background:#2a2a2a;color:#e1e1e1;">Posts</a>
-                {% if u.access_token and u.access_token.strip() %}
+                {% if u.cookies_data and u.cookies_data.strip() %}
                 <form method="post" action="/users/{{ u.id }}/disconnect" onsubmit="return confirm('Disconnect @{{ u.x_username }} from bot?')">
                     <button class="btn btn-danger btn-sm">Disconnect</button>
                 </form>
