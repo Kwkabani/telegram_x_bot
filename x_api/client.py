@@ -22,7 +22,7 @@ class XAPIClient:
     def _sync_post(self, text: str, media_path: Optional[str] = None) -> str:
         if self._is_oauth2:
             client = tweepy.Client(bearer_token=self._at)
-            tweet = client.create_tweet(text=text)
+            tweet = client.create_tweet(text=text, user_auth=False)
             tweet_id = tweet.data["id"]
             logger.info(f"Tweet posted (OAuth2): {tweet_id}")
             return tweet_id
@@ -54,6 +54,9 @@ class XAPIClient:
     def _sync_delete(self, tweet_id: str) -> bool:
         if self._is_oauth2:
             client = tweepy.Client(bearer_token=self._at)
+            client.delete_tweet(tweet_id, user_auth=False)
+            logger.info(f"Tweet deleted (OAuth2): {tweet_id}")
+            return True
         else:
             client = tweepy.Client(
                 consumer_key=X_API_KEY,

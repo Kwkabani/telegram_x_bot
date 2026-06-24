@@ -144,14 +144,10 @@ async def login_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     await query.edit_message_text(
         "🔐 *تسجيل الدخول إلى X*\n\n"
-        "1. افتح الرابط التالي:\n"
-        f"`{url}`\n\n"
-        "2. سجل الدخول إلى حساب X الذي تريد ربطه\n"
-        "3. اضغط **'Authorize app'** (سماح)\n"
-        "4. سيتم تحويلك إلى صفحة أخرى — **انسخ الرابط بالكامل** من شريط العنوان\n"
-        "5. أرسل الرابط هنا (او أرسل الكود فقط)\n\n"
+        f"{url}\n\n"
         "⚠️ الرابط صالح لمدة 24 ساعة.",
         reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔗 فتح رابط تسجيل الدخول", url=url)],
             [InlineKeyboardButton("❌ إلغاء", callback_data="cancel")],
         ]),
     )
