@@ -1,10 +1,17 @@
 import json
 import logging
 
-from x_browser.browser import PlaywrightManager
-from utils import encrypt_token, decrypt_token
+import httpx
+
+from utils import decrypt_token
 
 logger = logging.getLogger(__name__)
+
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/125.0.0.0 Safari/537.36"
+)
 
 
 class SessionKeeper:
@@ -13,7 +20,6 @@ class SessionKeeper:
         self._fernet_key = fernet_key
 
     async def refresh_all_sessions(self):
-        pm = PlaywrightManager.get_instance()
         session = self._session_factory()
         async with session:
             from db.repository import UserRepository
@@ -27,28 +33,32 @@ class SessionKeeper:
                     if not cookies_str:
                         continue
                     cookies = json.loads(cookies_str)
-                    context = await pm.new_context(cookies)
-                    page = await context.new_page()
-                    try:
-                        await page.goto(
+                    cookies_dict = {c["name"]: c["value"] for c in cookies}
+                    csrf = cookies_dict.get("ct0", "")
+
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.get(
                             "https://x.com/home",
-                            wait_until="networkidle",
-                            timeout=30000,
+                            headers={
+                                "authorization": (
+                                    "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAA"
+                                    "AnNwIzUyjRTSdBfJqdFpA0VSKhXQ%3D"
+                                    "kIiTxRGKjNdFfBxSaQvHbiRjLfVnVdq7cS1LlZxY"
+                                ),
+                                "x-csrf-token": csrf,
+                                "user-agent": USER_AGENT,
+                            },
+                            cookies=cookies_dict,
+                            follow_redirects=False,
+                            timeout=15,
                         )
-                        updated_cookies = await context.cookies()
-                        encrypted = encrypt_token(
-                            json.dumps(updated_cookies), self._fernet_key
-                        )
-                        await repo.update(user, cookies_data=encrypted)
-                        logger.info(f"Session refreshed for user {user.id}")
-                    except Exception as e:
-                        logger.warning(
-                            f"Session expired for user {user.id}: {e}"
-                        )
-                        await repo.update(user, needs_login=True)
-                    finally:
-                        await pm.close_context(context)
+                        if resp.status_code == 200:
+                            logger.info(f"Session valid for user {user.id}")
+                        else:
+                            logger.warning(
+                                f"Session expired for user {user.id} "
+                                f"(status {resp.status_code})"
+                            )
+                            await repo.update(user, needs_login=True)
                 except Exception as e:
-                    logger.error(
-                        f"Session keeper error for user {user.id}: {e}"
-                    )
+                    logger.error(f"Session keeper error for user {user.id}: {e}")
