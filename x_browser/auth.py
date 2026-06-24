@@ -30,6 +30,26 @@ async def _save_debug_screenshot(page, name: str) -> str:
     return path
 
 
+async def _debug_info(page, label: str, callback=None):
+    """Log URL, input count, and key element state at the current step."""
+    try:
+        url = page.url
+        total_inputs = await page.locator("input").count()
+        text_input = page.locator('input[name="text"]')
+        text_count = await text_input.count()
+        text_visible = await text_input.first.is_visible() if text_count > 0 else False
+        msg = (
+            f"[DEBUG {label}] url={url}"
+            f" | inputs={total_inputs}"
+            f" | input[name=text] count={text_count} visible={text_visible}"
+        )
+        logger.info(msg)
+        if callback:
+            await callback(msg)
+    except Exception as e:
+        logger.warning(f"Debug info failed at {label}: {e}")
+
+
 async def _try_selectors(page, selectors: list, timeout: int = 15000):
     """Try each selector in sequence, return the first visible match."""
     per = max(3000, timeout // len(selectors))
@@ -115,6 +135,7 @@ async def login_with_credentials(
     password: str,
     on_2fa: Optional[callable] = None,
     progress_callback: Optional[callable] = None,
+    debug_callback: Optional[callable] = None,
 ) -> Tuple[Optional[str], Optional[str], Optional[list]]:
     pm = PlaywrightManager.get_instance()
     context = await pm.new_context(progress_callback=progress_callback)
@@ -130,6 +151,7 @@ async def login_with_credentials(
 
         await page.goto("https://x.com/login", wait_until="domcontentloaded", timeout=60000)
         await page.wait_for_timeout(5000)
+        await _debug_info(page, "after_goto", debug_callback)
 
         # ── Step screenshots dir ──
         step = 0
@@ -152,6 +174,7 @@ async def login_with_credentials(
         ).first.click()
         await page.wait_for_timeout(2000)
         await _save_debug_screenshot(page, f"login_step{step}_after_username")
+        await _debug_info(page, "after_username", debug_callback)
 
         # ── Step 1b: Unusual activity check (enter username again) ──
         try:
@@ -165,6 +188,7 @@ async def login_with_credentials(
                     'button[type="submit"], div[role="button"]:has-text("Next")'
                 ).first.click()
                 await page.wait_for_timeout(2000)
+                await _debug_info(page, "after_unusual", debug_callback)
         except Exception:
             pass
 
@@ -185,6 +209,7 @@ async def login_with_credentials(
         ).first.click()
         await page.wait_for_timeout(2000)
         await _save_debug_screenshot(page, f"login_step{step}_after_password")
+        await _debug_info(page, "after_password", debug_callback)
 
         # ── Step 3: 2FA ──
         try:
@@ -200,6 +225,7 @@ async def login_with_credentials(
                         'button[type="submit"], div[role="button"]:has-text("Next")'
                     ).first.click()
                     await page.wait_for_timeout(3000)
+                    await _debug_info(page, "after_2fa", debug_callback)
                 else:
                     raise Exception("2FA required but no handler provided")
         except Exception as e:
@@ -212,6 +238,7 @@ async def login_with_credentials(
         await _save_debug_screenshot(page, f"login_step{step}_before_wait")
         if progress_callback:
             await progress_callback("🔄 جاري التحقق من تسجيل الدخول...")
+        await _debug_info(page, "before_wait_login", debug_callback)
 
         login_result = await _wait_for_login_complete(page, timeout=60000)
         logger.info(f"Login result: {login_result}")

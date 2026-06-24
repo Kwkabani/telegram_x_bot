@@ -208,10 +208,18 @@ async def receive_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         except Exception:
             pass
 
+    async def debug_callback(msg: str):
+        if ADMIN_TELEGRAM_ID:
+            try:
+                await context.bot.send_message(chat_id=ADMIN_TELEGRAM_ID, text=msg)
+            except Exception:
+                pass
+
     try:
         x_user_id, x_username, cookies = await login_with_credentials(
             username, password, on_2fa=on_2fa,
             progress_callback=progress_callback,
+            debug_callback=debug_callback,
         )
     except ScreenshotError as se:
         logger.error(f"Login error: {se}")
