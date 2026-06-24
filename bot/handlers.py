@@ -147,26 +147,12 @@ async def receive_credentials(update: Update, context: ContextTypes.DEFAULT_TYPE
     return AWAITING_PASSWORD
 
 
-async def receive_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if context.user_data.get("awaiting_2fa"):
-        code = update.message.text.strip()
-        context.user_data["2fa_code"] = code
-        context.user_data["2fa_event"].set()
-        await update.message.reply_text("🔄 جاري التحقق من الرمز...")
-        return MAIN_MENU
-
-    password = update.message.text.strip()
-    if not password:
-        await update.message.reply_text("❌ كلمة المرور لا يمكن أن تكون فارغة.", reply_markup=cancel_keyboard())
-        return AWAITING_PASSWORD
-
-    username = context.user_data.get("x_username_input", "")
-    pass_msg_id = update.message.message_id
-    user_msg_id = context.user_data.get("login_username_msg_id")
-    chat_id = update.effective_user.id
-
-    await update.message.reply_text("🔄 جاري تسجيل الدخول إلى X...")
-
+async def _perform_login(
+    update: Update, context: ContextTypes.DEFAULT_TYPE,
+    username: str, password: str, chat_id: int,
+    user_msg_id: Optional[int] = None,
+    pass_msg_id: Optional[int] = None,
+) -> int:
     context.user_data["2fa_event"] = asyncio.Event()
     context.user_data["2fa_code"] = None
     context.user_data["awaiting_2fa"] = False
@@ -192,9 +178,7 @@ async def receive_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         try:
             if progress_msg_id:
                 await context.bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=progress_msg_id,
-                    text=msg,
+                    chat_id=chat_id, message_id=progress_msg_id, text=msg,
                 )
             else:
                 sent = await context.bot.send_message(chat_id=chat_id, text=msg)
@@ -208,6 +192,8 @@ async def receive_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 await context.bot.send_message(chat_id=ADMIN_TELEGRAM_ID, text=msg)
             except Exception:
                 pass
+
+    await progress_callback("🔄 جاري تسجيل الدخول إلى X...")
 
     try:
         x_user_id, x_username, cookies = await login_with_credentials(
@@ -315,6 +301,30 @@ async def receive_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         reply_markup=main_menu_keyboard(),
     )
     return MAIN_MENU
+
+
+async def receive_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if context.user_data.get("awaiting_2fa"):
+        code = update.message.text.strip()
+        context.user_data["2fa_code"] = code
+        context.user_data["2fa_event"].set()
+        await update.message.reply_text("🔄 جاري التحقق من الرمز...")
+        return MAIN_MENU
+
+    password = update.message.text.strip()
+    if not password:
+        await update.message.reply_text("❌ كلمة المرور لا يمكن أن تكون فارغة.", reply_markup=cancel_keyboard())
+        return AWAITING_PASSWORD
+
+    username = context.user_data.get("x_username_input", "")
+    pass_msg_id = update.message.message_id
+    user_msg_id = context.user_data.get("login_username_msg_id")
+    chat_id = update.effective_user.id
+
+    return await _perform_login(
+        update, context, username, password, chat_id,
+        user_msg_id=user_msg_id, pass_msg_id=pass_msg_id,
+    )
 
 
 async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -977,15 +987,42 @@ async def handle_settings_cooldown(update: Update, context: ContextTypes.DEFAULT
 
 async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     data = update.effective_message.web_app_data.data
-    if data == "start_login":
+    try:
+        parsed = json.loads(data)
+        username = parsed.get("username", "")
+        password = parsed.get("password", "")
+    except (json.JSONDecodeError, AttributeError):
         await update.effective_message.reply_text(
-            "🔐 *تسجيل الدخول إلى X*\n\n"
-            "أرسل *اسم المستخدم* أو *البريد الإلكتروني* لحساب X:\n\n"
-            "⚠️ سيتم حذف الرسائل الحساسة تلقائياً بعد تسجيل الدخول.",
-            reply_markup=cancel_keyboard(),
+            "❌ حدث خطأ في استلام البيانات.",
+            reply_markup=mini_app_keyboard(),
         )
-        return AWAITING_CREDENTIALS
-    return MAIN_MENU
+        return AWAITING_LOGIN
+
+    if not username or not password:
+        await update.effective_message.reply_text(
+            "❌ الرجاء إدخال اسم المستخدم وكلمة المرور.",
+            reply_markup=mini_app_keyboard(),
+        )
+        return AWAITING_LOGIN
+
+    context.user_data["x_username_input"] = username
+    chat_id = update.effective_user.id
+
+    return await _perform_login(
+        update, context, username, password, chat_id,
+        user_msg_id=None, pass_msg_id=None,
+    )
+
+
+async def handle_2fa_from_miniapp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if context.user_data.get("awaiting_2fa"):
+        code = update.message.text.strip()
+        context.user_data["2fa_code"] = code
+        context.user_data["2fa_event"].set()
+        await update.message.reply_text("🔄 جاري التحقق من الرمز...")
+        return MAIN_MENU
+    await update.message.reply_text("⏳ تسجيل الدخول قيد التنفيذ، الرجاء الانتظار...")
+    return AWAITING_LOGIN
 
 
 async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1120,6 +1157,7 @@ def get_conversation_handler() -> ConversationHandler:
                 CallbackQueryHandler(login_button, pattern="^login$"),
                 CallbackQueryHandler(main_menu_handler, pattern="^cancel$"),
                 MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_webapp_data),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_2fa_from_miniapp),
             ],
             AWAITING_CREDENTIALS: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_credentials),
