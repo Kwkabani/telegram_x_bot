@@ -31,17 +31,15 @@ async def _save_debug_screenshot(page, name: str) -> str:
 
 
 async def _debug_info(page, label: str, callback=None):
-    """Log URL, input count, and key element state at the current step."""
     try:
         url = page.url
         total_inputs = await page.locator("input").count()
-        text_input = page.locator('input[name="text"]')
-        text_count = await text_input.count()
-        text_visible = await text_input.first.is_visible() if text_count > 0 else False
+        title = await page.title()
+        body_text = (await _get_page_text(page))[:200]
         msg = (
-            f"[DEBUG {label}] url={url}"
+            f"[{label}] url={url} | title={title}"
             f" | inputs={total_inputs}"
-            f" | input[name=text] count={text_count} visible={text_visible}"
+            f" | body={body_text}"
         )
         logger.info(msg)
         if callback:
@@ -150,7 +148,11 @@ async def login_with_credentials(
         page.on("pageerror", lambda err: logger.error(f"[BROWSER_ERROR] {err}"))
 
         await page.goto("https://x.com/login", wait_until="domcontentloaded", timeout=60000)
-        await page.wait_for_timeout(5000)
+        try:
+            await page.wait_for_selector("input", state="attached", timeout=15000)
+        except:
+            pass
+        await page.wait_for_timeout(1000)
         await _debug_info(page, "after_goto", debug_callback)
 
         # ── Step screenshots dir ──
