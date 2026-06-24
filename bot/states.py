@@ -3,7 +3,7 @@ from telegram.ext import ConversationHandler
 (
     MAIN_MENU,                      # 0
     AWAITING_LOGIN,                 # 1
-    AWAITING_CREDENTIALS,           # 2 - X username:password login
+    AWAITING_CREDENTIALS,           # 2 - X username/email
     AWAITING_POST_TEXT,             # 3
     AWAITING_POST_MEDIA,            # 4
     AWAITING_DELETE_TIME,           # 5
@@ -14,4 +14,5 @@ from telegram.ext import ConversationHandler
     AWAITING_CUSTOM_SETTINGS_DELETE_TIME,  # 10
     AWAITING_SETTINGS_REPEAT,       # 11
     AWAITING_SETTINGS_COOLDOWN,     # 12
-) = range(13)
+    AWAITING_PASSWORD,              # 13 - X password
+) = range(14)

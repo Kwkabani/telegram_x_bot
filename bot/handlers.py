@@ -130,16 +130,30 @@ async def login_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     await query.edit_message_text(
         "🔐 *تسجيل الدخول إلى X*\n\n"
-        "أرسل اسم المستخدم وكلمة المرور لحساب X بهذه الصيغة:\n\n"
-        "`username:password`\n\n"
-        "مثال: `myuser:MyP@ss123`\n\n"
-        "⚠️ كلمة المرور لا تُحفظ مطلقاً، بل تُستخدم فقط لتسجيل الدخول لمرة واحدة.",
+        "أرسل *اسم المستخدم* أو *البريد الإلكتروني* لحساب X:\n\n"
+        "⚠️ سيتم حذف الرسائل الحساسة تلقائياً بعد تسجيل الدخول.",
         reply_markup=cancel_keyboard(),
     )
     return AWAITING_CREDENTIALS
 
 
 async def receive_credentials(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    text = update.message.text.strip()
+    if not text:
+        return AWAITING_CREDENTIALS
+
+    context.user_data["x_username_input"] = text
+    context.user_data["login_username_msg_id"] = update.message.message_id
+
+    await update.message.reply_text(
+        "🔑 الآن أرسل *كلمة المرور* لحساب X:\n\n"
+        "⚠️ لن تُحفظ كلمة المرور، وتُستخدم فقط لتسجيل الدخول لمرة واحدة.",
+        reply_markup=cancel_keyboard(),
+    )
+    return AWAITING_PASSWORD
+
+
+async def receive_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if context.user_data.get("awaiting_2fa"):
         code = update.message.text.strip()
         context.user_data["2fa_code"] = code
@@ -147,19 +161,15 @@ async def receive_credentials(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("🔄 جاري التحقق من الرمز...")
         return MAIN_MENU
 
-    text = update.message.text.strip()
-    if ":" not in text:
-        await update.message.reply_text(
-            "❌ الصيغة خاطئة. أرسل الاسم والباسورد بهذه الصيغة:\n\n"
-            "`username:password`",
-            reply_markup=cancel_keyboard(),
-        )
-        return AWAITING_CREDENTIALS
+    password = update.message.text.strip()
+    if not password:
+        await update.message.reply_text("❌ كلمة المرور لا يمكن أن تكون فارغة.", reply_markup=cancel_keyboard())
+        return AWAITING_PASSWORD
 
-    username, password = text.split(":", 1)
-    if not username or not password:
-        await update.message.reply_text("❌ الاسم أو الباسورد فارغ.")
-        return AWAITING_CREDENTIALS
+    username = context.user_data.get("x_username_input", "")
+    pass_msg_id = update.message.message_id
+    user_msg_id = context.user_data.get("login_username_msg_id")
+    chat_id = update.effective_user.id
 
     await update.message.reply_text("🔄 جاري تسجيل الدخول إلى X...")
 
@@ -169,7 +179,7 @@ async def receive_credentials(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     async def on_2fa():
         await context.bot.send_message(
-            chat_id=update.effective_user.id,
+            chat_id=chat_id,
             text="🔐 *مطلوب رمز التحقق (2FA)*\n\n"
                  "أرسل رمز التحقق المرسل إلى هاتفك أو بريدك الإلكتروني:",
         )
@@ -187,26 +197,31 @@ async def receive_credentials(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
     except Exception as e:
         logger.error(f"Login error: {e}")
-        await update.message.reply_text(
-            "❌ فشل تسجيل الدخول. تحقق من البيانات وحاول مرة أخرى.",
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="❌ فشل تسجيل الدخول. تحقق من البيانات وحاول مرة أخرى.",
             reply_markup=login_keyboard(),
         )
+        context.user_data.pop("x_username_input", None)
+        context.user_data.pop("login_username_msg_id", None)
         return AWAITING_LOGIN
 
     if not cookies:
-        await update.message.reply_text(
-            "❌ فشل تسجيل الدخول. تحقق من الاسم والباسورد وحاول مرة أخرى.",
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="❌ فشل تسجيل الدخول. تحقق من الاسم والباسورد وحاول مرة أخرى.",
             reply_markup=login_keyboard(),
         )
+        context.user_data.pop("x_username_input", None)
+        context.user_data.pop("login_username_msg_id", None)
         return AWAITING_LOGIN
 
     encrypted_cookies = encrypt_token(json.dumps(cookies), FERNET_KEY)
 
-    telegram_id = update.effective_user.id
     session = async_session_factory()
     async with session:
         repo = UserRepository(session)
-        user = await repo.get_by_telegram_id(telegram_id)
+        user = await repo.get_by_telegram_id(chat_id)
         if user:
             await repo.update(
                 user,
@@ -217,17 +232,28 @@ async def receive_credentials(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         else:
             await repo.create(
-                telegram_id=telegram_id,
+                telegram_id=chat_id,
                 x_user_id=x_user_id,
                 x_username=x_username,
                 cookies_data=encrypted_cookies,
             )
 
-    await update.message.reply_text(
-        f"✅ *تم تسجيل الدخول بنجاح!*\n\n"
-        f"مرحباً @{x_username} 🎉\n"
-        "تم حفظ الجلسة بشكل آمن.\n"
-        "يمكنك الآن البدء بالنشر.",
+    for msg_id in (user_msg_id, pass_msg_id):
+        if msg_id:
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+            except Exception:
+                pass
+
+    context.user_data.pop("x_username_input", None)
+    context.user_data.pop("login_username_msg_id", None)
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=f"✅ *تم تسجيل الدخول بنجاح!*\n\n"
+             f"مرحباً @{x_username} 🎉\n"
+             "تم حفظ الجلسة بشكل آمن.\n"
+             "يمكنك الآن البدء بالنشر.",
         reply_markup=main_menu_keyboard(),
     )
     return MAIN_MENU
@@ -258,6 +284,8 @@ async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         )
         return MAIN_MENU
     elif query.data == "cancel":
+        context.user_data.pop("x_username_input", None)
+        context.user_data.pop("login_username_msg_id", None)
         await query.edit_message_text(
             "✅ تم الإلغاء.",
             reply_markup=main_menu_keyboard(),
@@ -908,6 +936,10 @@ def get_conversation_handler() -> ConversationHandler:
             ],
             AWAITING_CREDENTIALS: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_credentials),
+                CallbackQueryHandler(main_menu_handler, pattern="^cancel$"),
+            ],
+            AWAITING_PASSWORD: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_password),
                 CallbackQueryHandler(main_menu_handler, pattern="^cancel$"),
             ],
             MAIN_MENU: [
