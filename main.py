@@ -117,7 +117,7 @@ def main() -> None:
         logger.info(f"Render mode detected (PORT={render_port}), starting web server in background")
         thread = threading.Thread(
             target=run_web_server_sync,
-            kwargs={"port": int(render_port)},
+            kwargs={"host": "0.0.0.0", "port": int(render_port)},
             daemon=True,
             name="web_render",
         )
@@ -152,13 +152,13 @@ def main() -> None:
     )
 
 
-def run_web_server_sync(port: int = None) -> None:
+def run_web_server_sync(host: str = None, port: int = None) -> None:
     import uvicorn
     import traceback
     from web.app import app
 
     try:
-        host = WEB_HOST
+        host = host or WEB_HOST
         port = port or WEB_PORT
         logger.info(f"Starting web server on {host}:{port}")
         uvicorn.run(app, host=host, port=port, log_level="info", access_log=True)
