@@ -191,9 +191,27 @@ async def receive_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         context.user_data.pop("awaiting_2fa", None)
         return code
 
+    progress_msg_id = None
+
+    async def progress_callback(msg: str):
+        nonlocal progress_msg_id
+        try:
+            if progress_msg_id:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=progress_msg_id,
+                    text=msg,
+                )
+            else:
+                sent = await context.bot.send_message(chat_id=chat_id, text=msg)
+                progress_msg_id = sent.message_id
+        except Exception:
+            pass
+
     try:
         x_user_id, x_username, cookies = await login_with_credentials(
-            username, password, on_2fa=on_2fa
+            username, password, on_2fa=on_2fa,
+            progress_callback=progress_callback,
         )
     except Exception as e:
         logger.error(f"Login error: {e}")

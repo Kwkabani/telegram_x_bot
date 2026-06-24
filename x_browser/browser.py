@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import subprocess
 import sys
 from typing import Optional
 
@@ -10,7 +9,7 @@ from playwright.async_api import async_playwright, Browser, BrowserContext
 logger = logging.getLogger(__name__)
 
 
-def _ensure_browser_installed() -> None:
+async def _ensure_browser_installed(progress_callback=None) -> None:
     cache_dir = os.environ.get(
         "PLAYWRIGHT_BROWSERS_PATH",
         os.path.join(os.path.expanduser("~"), ".cache", "ms-playwright"),
@@ -20,9 +19,19 @@ def _ensure_browser_installed() -> None:
             if entry.startswith("chromium"):
                 return
     logger.info("Chromium browser not found, installing...")
-    subprocess.check_call(
-        [sys.executable, "-m", "playwright", "install", "chromium"],
+    if progress_callback:
+        await progress_callback("جارٍ تحميل متصفح كروم... (قد يستغرق دقيقة)")
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-m", "playwright", "install", "chromium",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
     )
+    stdout, _ = await proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"Chromium install failed (exit {proc.returncode}): "
+            f"{stdout.decode(errors='replace') if stdout else 'unknown'}"
+        )
     logger.info("Chromium browser installed")
 
 STEALTH_SCRIPT = """
@@ -56,10 +65,10 @@ class PlaywrightManager:
             cls._instance = cls()
         return cls._instance
 
-    async def get_browser(self) -> Browser:
+    async def get_browser(self, progress_callback=None) -> Browser:
         async with self._lock:
             if self._browser is None or not self._browser.is_connected():
-                _ensure_browser_installed()
+                await _ensure_browser_installed(progress_callback)
                 pw = await async_playwright().start()
                 self._browser = await pw.chromium.launch(
                     headless=True,
@@ -76,8 +85,8 @@ class PlaywrightManager:
                 logger.info("Playwright browser launched")
             return self._browser
 
-    async def new_context(self, cookies: Optional[list] = None) -> BrowserContext:
-        browser = await self.get_browser()
+    async def new_context(self, cookies: Optional[list] = None, progress_callback=None) -> BrowserContext:
+        browser = await self.get_browser(progress_callback)
         context = await browser.new_context(
             viewport={"width": 1280, "height": 720},
             user_agent=(

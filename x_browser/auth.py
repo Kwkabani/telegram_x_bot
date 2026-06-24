@@ -10,9 +10,10 @@ async def login_with_credentials(
     username: str,
     password: str,
     on_2fa: Optional[callable] = None,
+    progress_callback: Optional[callable] = None,
 ) -> Tuple[Optional[str], Optional[str], Optional[list]]:
     pm = PlaywrightManager.get_instance()
-    context = await pm.new_context()
+    context = await pm.new_context(progress_callback=progress_callback)
     page = await context.new_page()
 
     try:

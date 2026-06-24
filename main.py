@@ -29,6 +29,8 @@ async def post_init(application: Application) -> None:
     try:
         await application.bot.delete_webhook(drop_pending_updates=True)
         logger.info("Cleared any existing webhook/polling connection")
+        await asyncio.sleep(5)
+        logger.info("Waited 5s for old instance to shut down")
     except Exception as e:
         logger.warning(f"Could not delete webhook: {e}")
 
@@ -97,7 +99,14 @@ async def post_shutdown(application: Application) -> None:
 
 async def conflict_handler(update, context):
     if isinstance(context.error, telegram_error.Conflict):
-        logger.warning("Conflict 409 detected. Terminating old connection via delete_webhook...")
+        attempt = context.bot_data.get("conflict_attempt", 0) + 1
+        context.bot_data["conflict_attempt"] = attempt
+        backoff = min(attempt * 5, 60)
+        logger.warning(
+            f"Conflict 409 detected (attempt {attempt}). "
+            f"Waiting {backoff}s before retry..."
+        )
+        await asyncio.sleep(backoff)
         try:
             await context.bot.delete_webhook(drop_pending_updates=True)
             logger.info("Old connection terminated. Restarting polling...")
@@ -151,15 +160,15 @@ def main() -> None:
 
 
 def run_web_server_sync(host: str = "0.0.0.0", port: int = 5000) -> None:
-    import uvicorn
-    import traceback
-    from dashboard.app import app
-
     try:
+        import uvicorn
+        from dashboard.app import app
+
         logger.info(f"Starting dashboard server on {host}:{port}")
         uvicorn.run(app, host=host, port=port, log_level="info", access_log=True)
-    except Exception:
-        logger.critical(f"Dashboard server failed to start:\n{traceback.format_exc()}")
+    except Exception as e:
+        import traceback
+        logger.critical(f"Dashboard server failed to start: {e}\n{traceback.format_exc()}")
 
 
 if __name__ == "__main__":
