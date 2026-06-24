@@ -74,6 +74,21 @@ def require_auth(func):
     return wrapper
 
 
+# ─── Mini App ──────────────────────────────────────────────────────
+
+
+MINI_APP_HTML_PATH = Path(__file__).parent.parent / "bot" / "templates" / "mini_app.html"
+
+
+@app.get("/mini_app", response_class=HTMLResponse)
+async def mini_app():
+    if MINI_APP_HTML_PATH.exists():
+        html = MINI_APP_HTML_PATH.read_text(encoding="utf-8")
+    else:
+        html = "<html><body><h1>Mini App not found</h1></body></html>"
+    return HTMLResponse(content=html)
+
+
 # ─── Health ─────────────────────────────────────────────────────────
 
 

@@ -33,6 +33,12 @@ WEB_PORT: int = int(os.environ.get("WEB_PORT", "8080"))
 ADMIN_TELEGRAM_ID: int = int(os.environ.get("ADMIN_TELEGRAM_ID", "0"))
 ADMIN_PASSWORD: str = os.environ.get("ADMIN_PASSWORD", "admin123")
 
+# Cookie storage
+COOKIES_DIR: str = str(PROJECT_ROOT / "data" / "cookies")
+
+# Mini App
+MINI_APP_URL: str = "https://telegram-x-bot-1.onrender.com/mini_app"
+
 # Rate limits
 MAX_ACTIVE_POSTS: int = int(os.environ.get("MAX_ACTIVE_POSTS", "7"))
 MAX_POSTS_PER_HOUR: int = int(os.environ.get("MAX_POSTS_PER_HOUR", "7"))

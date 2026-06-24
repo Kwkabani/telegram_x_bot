@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>X Bot</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #1a1a2e;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+            text-align: center;
+        }
+        .container { max-width: 360px; width: 100%; }
+        .logo { font-size: 64px; margin-bottom: 20px; }
+        h1 { font-size: 24px; margin-bottom: 10px; color: #ffffff; }
+        p { font-size: 16px; line-height: 1.6; margin-bottom: 30px; color: #a0a0c0; }
+        .btn {
+            display: inline-block;
+            padding: 16px 32px;
+            background: #1d9bf0;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #1a8cd8; }
+        .btn:active { transform: scale(0.98); }
+        .footer { margin-top: 30px; font-size: 12px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🤖</div>
+        <h1>مرحباً بك في X Bot</h1>
+        <p>
+            يمكنك ربط حساب X الخاص بك لإدارة المنشورات
+            وجدولة التغريدات وحذفها تلقائياً.
+        </p>
+        <button class="btn" onclick="startLogin()">🚀 بدء تسجيل الدخول</button>
+        <div class="footer">سيتم توجيهك لإدخال بيانات الدخول في المحادثة</div>
+    </div>
+    <script>
+        function startLogin() {
+            Telegram.WebApp.sendData("start_login");
+            Telegram.WebApp.close();
+        }
+        Telegram.WebApp.ready();
+        Telegram.WebApp.expand();
+    </script>
+</body>
+</html>

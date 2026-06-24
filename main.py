@@ -9,13 +9,19 @@ from pathlib import Path
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from telegram import error as telegram_error
-from telegram.ext import Application, CommandHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from telegram.request import HTTPXRequest
 
 from config import BOT_TOKEN, WEB_PORT, PROJECT_ROOT, FERNET_KEY
 from singleton import BotSingleton
 from db.base import init_db, async_session_factory
-from bot.handlers import get_conversation_handler, start, notify_admin
+from bot.handlers import (
+    get_conversation_handler,
+    start,
+    notify_admin,
+    post_command,
+    delete_command,
+)
 from scheduler.sweeper import PostSweeper
 from scheduler.reproductions import ReproductionManager
 from scheduler.health import HealthMonitor
@@ -161,6 +167,8 @@ def main() -> None:
     )
 
     application.add_handler(get_conversation_handler())
+    application.add_handler(CommandHandler("post", post_command))
+    application.add_handler(CommandHandler("delete", delete_command))
     application.add_error_handler(conflict_handler)
 
     application.run_polling(

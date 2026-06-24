@@ -89,6 +89,23 @@ class PlaywrightManager:
             await context.add_cookies(cookies)
         return context
 
+    async def create_stealth_context(self, cookies: Optional[list] = None, progress_callback=None) -> BrowserContext:
+        browser = await self.get_browser(progress_callback)
+        context = await browser.new_context(
+            viewport={"width": 1280, "height": 720},
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/125.0.0.0 Safari/537.36"
+            ),
+            locale="ar-SA",
+            timezone_id="Asia/Riyadh",
+        )
+        await Stealth().apply_stealth_async(context)
+        if cookies:
+            await context.add_cookies(cookies)
+        return context
+
     async def close_context(self, context: BrowserContext):
         await context.close()
 

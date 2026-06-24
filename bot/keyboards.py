@@ -1,4 +1,13 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
+
+
+def mini_app_keyboard() -> InlineKeyboardMarkup:
+    from config import MINI_APP_URL
+    buttons = [
+        [InlineKeyboardButton("🔗 ربط حساب X (تطبيق)", web_app=WebAppInfo(url=MINI_APP_URL))],
+        [InlineKeyboardButton("🔐 تسجيل الدخول يدويًا", callback_data="login")],
+    ]
+    return InlineKeyboardMarkup(buttons)
 
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:

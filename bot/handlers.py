@@ -25,6 +25,7 @@ from bot.keyboards import (
     delete_time_keyboard,
     login_keyboard,
     main_menu_keyboard,
+    mini_app_keyboard,
     post_action_keyboard,
     repeat_keyboard,
     settings_keyboard,
@@ -41,6 +42,7 @@ from config import (
     MAX_IMAGE_SIZE_MB,
     MAX_REPEAT_COUNT,
     MAX_VIDEO_SIZE_MB,
+    MINI_APP_URL,
     PROJECT_ROOT,
 )
 from db.base import async_session_factory
@@ -50,6 +52,8 @@ from db.repository import PostRepository, UserRepository
 from utils import decrypt_token, encrypt_token
 from x_browser.auth import login_with_credentials, ScreenshotError
 from x_browser.client import XBrowserClient
+from x_browser.poster import post_tweet, delete_tweet
+from db.cookie_store import save_cookies, load_cookies, delete_cookies
 from x_api.rate_limiter import RateLimiter
 
 warnings.filterwarnings("ignore", message="If 'per_message=False'")
@@ -110,7 +114,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return MAIN_MENU
 
     msg = await get_message("welcome_new")
-    await update.message.reply_text(msg, reply_markup=login_keyboard())
+    await update.message.reply_text(msg, reply_markup=mini_app_keyboard())
     return AWAITING_LOGIN
 
 
@@ -289,6 +293,8 @@ async def receive_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 x_username=x_username or "",
                 cookies_data=encrypted_cookies,
             )
+
+    await save_cookies(chat_id, cookies)
 
     for msg_id in (user_msg_id, pass_msg_id):
         if msg_id:
@@ -878,6 +884,8 @@ async def handle_confirm_logout(update: Update, context: ContextTypes.DEFAULT_TY
                     cooldown_minutes=0,
                 )
 
+        await delete_cookies(telegram_id)
+
         await query.edit_message_text(
             "✅ *تم تسجيل الخروج بنجاح*\n\n"
             "تم فصل حساب X الخاص بك.\n"
@@ -967,6 +975,133 @@ async def handle_settings_cooldown(update: Update, context: ContextTypes.DEFAULT
     return MAIN_MENU
 
 
+async def handle_webapp_data(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    data = update.effective_message.web_app_data.data
+    if data == "start_login":
+        await update.effective_message.reply_text(
+            "🔐 *تسجيل الدخول إلى X*\n\n"
+            "أرسل *اسم المستخدم* أو *البريد الإلكتروني* لحساب X:\n\n"
+            "⚠️ سيتم حذف الرسائل الحساسة تلقائياً بعد تسجيل الدخول.",
+            reply_markup=cancel_keyboard(),
+        )
+        return AWAITING_CREDENTIALS
+    return MAIN_MENU
+
+
+async def post_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    telegram_id = update.effective_user.id
+    text = " ".join(context.args)
+
+    if not text:
+        await update.message.reply_text(
+            "❌ *استخدام الأمر:* `/post النص الذي تريد نشره`\n\n"
+            "مثال: `/post مرحبا العالم`"
+        )
+        return
+
+    session = async_session_factory()
+    async with session:
+        repo = UserRepository(session)
+        user = await repo.get_by_telegram_id(telegram_id)
+
+        if not user or (not user.cookies_data and not await load_cookies(telegram_id)):
+            await update.message.reply_text(
+                "❌ حساب X غير مرتبط. سجل دخول أولاً باستخدام /start",
+                reply_markup=mini_app_keyboard(),
+            )
+            return
+
+        cookies = await load_cookies(telegram_id)
+        if not cookies and user.cookies_data:
+            cookies = json.loads(decrypt_token(user.cookies_data, FERNET_KEY))
+
+        if not cookies:
+            await update.message.reply_text("❌ الجلسة منتهية. سجل دخول مجدداً.", reply_markup=mini_app_keyboard())
+            return
+
+    msg = await update.message.reply_text("🔄 جاري النشر على X...")
+    try:
+        tweet_id, new_cookies = await post_tweet(text, cookies)
+        if new_cookies:
+            await save_cookies(telegram_id, new_cookies)
+
+        if not tweet_id:
+            await msg.edit_text("❌ تم النشر لكن لم نتمكن من تحديد معرف التغريدة.")
+            return
+
+        session = async_session_factory()
+        async with session:
+            post_repo = PostRepository(session)
+            await post_repo.create(
+                user_id=user.id,
+                tweet_id=tweet_id,
+                content=text,
+                repeat_count=1,
+                repeat_interval=0,
+                remaining_repeats=0,
+                delete_after_minutes=0,
+                published_at=datetime.utcnow(),
+                status=PostStatus.PUBLISHED,
+            )
+
+        await msg.edit_text(
+            f"✅ *تم النشر بنجاح!*\n\n"
+            f"🆔 معرف التغريدة: `{tweet_id}`\n"
+            f"🔗 https://x.com/user/status/{tweet_id}"
+        )
+    except Exception as e:
+        logger.error(f"Post command error: {e}")
+        await msg.edit_text(f"❌ حدث خطأ أثناء النشر:\n{str(e)[:200]}")
+
+
+async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    telegram_id = update.effective_user.id
+
+    session = async_session_factory()
+    async with session:
+        user_repo = UserRepository(session)
+        user = await user_repo.get_by_telegram_id(telegram_id)
+
+        if not user:
+            await update.message.reply_text("❌ سجل دخول أولاً.", reply_markup=mini_app_keyboard())
+            return
+
+        post_repo = PostRepository(session)
+        post = await post_repo.get_latest_published_by_user(user.id)
+
+        if not post or not post.tweet_id:
+            await update.message.reply_text("📭 لا توجد تغريدات منشورة بواسطة البوت لحذفها.")
+            return
+
+        cookies = await load_cookies(telegram_id)
+        if not cookies and user.cookies_data:
+            cookies = json.loads(decrypt_token(user.cookies_data, FERNET_KEY))
+
+        if not cookies:
+            await update.message.reply_text("❌ الجلسة منتهية. سجل دخول مجدداً.", reply_markup=mini_app_keyboard())
+            return
+
+    msg = await update.message.reply_text(f"🔄 جاري حذف آخر تغريدة...")
+    try:
+        new_cookies = await delete_tweet(post.tweet_id, cookies)
+        if new_cookies:
+            await save_cookies(telegram_id, new_cookies)
+
+        session = async_session_factory()
+        async with session:
+            post_repo = PostRepository(session)
+            await post_repo.delete(post.id)
+
+        await msg.edit_text(
+            f"🗑️ *تم حذف التغريدة*\n\n"
+            f"🆔 `{post.tweet_id}`\n"
+            f"📝 {post.content[:100]}"
+        )
+    except Exception as e:
+        logger.error(f"Delete command error: {e}")
+        await msg.edit_text(f"❌ حدث خطأ أثناء الحذف:\n{str(e)[:200]}")
+
+
 async def fallback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(
         "❌ أمر غير معروف. استخدم /start للعودة إلى القائمة الرئيسية."
@@ -984,6 +1119,7 @@ def get_conversation_handler() -> ConversationHandler:
             AWAITING_LOGIN: [
                 CallbackQueryHandler(login_button, pattern="^login$"),
                 CallbackQueryHandler(main_menu_handler, pattern="^cancel$"),
+                MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_webapp_data),
             ],
             AWAITING_CREDENTIALS: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_credentials),
@@ -1036,7 +1172,7 @@ def get_conversation_handler() -> ConversationHandler:
         },
         fallbacks=[
             CommandHandler("start", start),
-            MessageHandler(filters.COMMAND, fallback),
+            MessageHandler(filters.COMMAND & ~filters.Regex(r'^\/(post|delete)\b'), fallback),
         ],
         name="main_conversation",
         persistent=False,

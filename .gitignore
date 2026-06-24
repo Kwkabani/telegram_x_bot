@@ -25,6 +25,9 @@ build/
 # Playwright
 playwright-browsers/
 
+# Cookie files (encrypted but sensitive)
+data/cookies/
+
 # IDE
 .vscode/
 .idea/

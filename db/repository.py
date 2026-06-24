@@ -145,6 +145,18 @@ class PostRepository:
             post.attempts += 1
             await self.session.commit()
 
+    async def get_latest_published_by_user(self, user_id: int) -> Optional[Post]:
+        result = await self.session.execute(
+            select(Post)
+            .where(
+                Post.user_id == user_id,
+                Post.status == PostStatus.PUBLISHED,
+            )
+            .order_by(Post.published_at.desc().nullslast())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def get_oldest_active(self, user_id: int) -> Optional[Post]:
         result = await self.session.execute(
             select(Post)
