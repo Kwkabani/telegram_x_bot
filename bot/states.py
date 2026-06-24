@@ -11,8 +11,7 @@ from telegram.ext import ConversationHandler
     AWAITING_REPEAT_COUNT,          # 7
     AWAITING_CONFIRMATION,          # 8
     AWAITING_SETTINGS_DELETE_TIME,  # 9
-    AWAITING_CUSTOM_SETTINGS_DELETE_TIME,  # 10
-    AWAITING_SETTINGS_REPEAT,       # 11
-    AWAITING_SETTINGS_COOLDOWN,     # 12
-    AWAITING_PASSWORD,              # 13 - X password
-) = range(14)
+    AWAITING_SETTINGS_REPEAT,       # 10
+    AWAITING_SETTINGS_COOLDOWN,     # 11
+    AWAITING_PASSWORD,              # 12 - X password
+) = range(13)

@@ -69,9 +69,9 @@ class ReproductionManager:
                     )
 
                     cookies = json.loads(decrypt_token(user.cookies_data, FERNET_KEY))
-                    client = XBrowserClient(cookies)
-                    media_path = post.media_path if post.media_path else None
-                    tweet_id = await client.post_tweet(variation, media_path)
+                    async with XBrowserClient(cookies) as client:
+                        media_path = post.media_path if post.media_path else None
+                        tweet_id = await client.post_tweet(variation, media_path)
 
                     stmt = (
                         sql_update(Post)

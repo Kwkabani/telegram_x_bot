@@ -1,4 +1,6 @@
+import hashlib
 import logging
+import secrets
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
@@ -30,6 +32,9 @@ _dashboard_engine = create_async_engine(
 _dashboard_session_factory = async_sessionmaker(
     _dashboard_engine, class_=AsyncSession, expire_on_commit=False
 )
+
+_admin_password_hash = hashlib.sha256(ADMIN_PASSWORD.encode()).hexdigest()
+_session_token = secrets.token_urlsafe(32)
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +68,7 @@ def require_auth(func):
     @wraps(func)
     async def wrapper(request: Request, *args, **kwargs):
         token = request.cookies.get("admin_token")
-        if token != ADMIN_PASSWORD:
+        if token != _session_token:
             return RedirectResponse(url="/login?next_url=" + request.url.path)
         return await func(request, *args, **kwargs)
     return wrapper
@@ -92,9 +97,9 @@ async def login_post(request: Request):
     form = await request.form()
     password = form.get("password", "")
     next_url = form.get("next_url", "/")
-    if password == ADMIN_PASSWORD:
+    if hashlib.sha256(password.encode()).hexdigest() == _admin_password_hash:
         resp = RedirectResponse(url=next_url, status_code=303)
-        resp.set_cookie(key="admin_token", value=ADMIN_PASSWORD, httponly=True, max_age=86400)
+        resp.set_cookie(key="admin_token", value=_session_token, httponly=True, max_age=86400)
         return resp
     return RedirectResponse(url=f"/login?error=wrong&next_url={next_url}", status_code=303)
 

@@ -94,8 +94,3 @@ async def init_db() -> None:
     await _migrate_cookies_column()
     await _migrate_needs_login_column()
     logger.info("Database initialized")
-
-
-async def get_session() -> AsyncSession:
-    async with async_session_factory() as session:
-        yield session

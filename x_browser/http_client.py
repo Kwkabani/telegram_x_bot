@@ -33,6 +33,12 @@ class XHTTPClient:
             if c["name"] == "ct0":
                 self._csrf_token = c["value"]
                 break
+        if not self._csrf_token:
+            raise ValueError("Missing ct0 (CSRF) cookie - cannot authenticate with X API")
+        self._client = httpx.AsyncClient()
+
+    async def close(self):
+        await self._client.aclose()
 
     def _headers(self) -> dict:
         return {
@@ -49,21 +55,20 @@ class XHTTPClient:
         url = f"https://x.com/i/api/graphql/{query_id}/{operation}"
         body = {"variables": variables, "queryId": query_id}
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                url,
-                headers=self._headers(),
-                json=body,
-                cookies=self._cookies_dict,
-                timeout=30,
-            )
-            if resp.status_code == 403:
-                logger.warning(f"GraphQL {operation} returned 403, hash may be stale")
-            resp.raise_for_status()
-            data = resp.json()
-            if data.get("errors"):
-                raise Exception(f"GraphQL error: {data['errors']}")
-            return data
+        resp = await self._client.post(
+            url,
+            headers=self._headers(),
+            json=body,
+            cookies=self._cookies_dict,
+            timeout=30,
+        )
+        if resp.status_code == 403:
+            logger.warning(f"GraphQL {operation} returned 403, hash may be stale")
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("errors"):
+            raise Exception(f"GraphQL error: {data['errors']}")
+        return data
 
     async def post_tweet(self, text: str, media_path: Optional[str] = None) -> str:
         media_id = None

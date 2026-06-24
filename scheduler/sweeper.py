@@ -51,8 +51,8 @@ class PostSweeper:
                         continue
 
                     cookies = json.loads(decrypt_token(user.cookies_data, FERNET_KEY))
-                    client = XBrowserClient(cookies)
-                    success = await client.delete_tweet(post.tweet_id)
+                    async with XBrowserClient(cookies) as client:
+                        success = await client.delete_tweet(post.tweet_id)
 
                     if success:
                         await repo.update_status(post.id, PostStatus.DELETED)

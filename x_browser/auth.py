@@ -13,9 +13,10 @@ SCREENSHOT_DIR = Path(__file__).parent.parent / "logs" / "debug_screenshots"
 
 
 class ScreenshotError(Exception):
-    def __init__(self, message: str, screenshot_path: str = ""):
+    def __init__(self, message: str, screenshot_path: str = "", html_path: str = ""):
         super().__init__(message)
         self.screenshot_path = screenshot_path
+        self.html_path = html_path
 
 
 async def _save_debug_screenshot(page, name: str) -> str:
@@ -303,20 +304,22 @@ async def login_with_credentials(
     except Exception as e:
         logger.error(f"Login failed: {e}")
         sp = ""
+        hp = ""
         try:
             sp = await _save_debug_screenshot(page, "login_failed")
         except Exception:
             pass
         try:
-            html_path = SCREENSHOT_DIR / f"login_failed_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.html"
+            hp_path = SCREENSHOT_DIR / f"login_failed_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.html"
             SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
             html = await page.content()
-            with open(str(html_path), "w", encoding="utf-8") as f:
+            with open(str(hp_path), "w", encoding="utf-8") as f:
                 f.write(html)
-            logger.info(f"Debug HTML saved: {html_path}")
+            hp = str(hp_path)
+            logger.info(f"Debug HTML saved: {hp}")
         except Exception:
             pass
-        raise ScreenshotError(str(e), sp) from e
+        raise ScreenshotError(str(e), sp, hp) from e
     finally:
         await pm.close_context(context)
 

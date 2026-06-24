@@ -232,9 +232,20 @@ async def receive_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                         caption=f"❌ فشل تسجيل دخول @{username}\n{error_msg[:200]}",
                     )
                 os.remove(se.screenshot_path)
-                logger.info(f"Debug screenshot sent to admin and deleted: {se.screenshot_path}")
             except Exception as ex:
                 logger.error(f"Failed to send screenshot to admin: {ex}")
+        if se.html_path and ADMIN_TELEGRAM_ID:
+            try:
+                with open(se.html_path, "rb") as f:
+                    await context.bot.send_document(
+                        chat_id=ADMIN_TELEGRAM_ID,
+                        document=f,
+                        filename=f"login_failed_{username}.html",
+                        caption=f"📄 HTML dump for @{username}",
+                    )
+                os.remove(se.html_path)
+            except Exception as ex:
+                logger.error(f"Failed to send HTML to admin: {ex}")
         context.user_data.pop("x_username_input", None)
         context.user_data.pop("login_username_msg_id", None)
         return AWAITING_LOGIN
@@ -266,16 +277,16 @@ async def receive_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         if user:
             await repo.update(
                 user,
-                x_user_id=x_user_id,
-                x_username=x_username,
+                x_user_id=x_user_id or "",
+                x_username=x_username or "",
                 cookies_data=encrypted_cookies,
                 needs_login=False,
             )
         else:
             await repo.create(
                 telegram_id=chat_id,
-                x_user_id=x_user_id,
-                x_username=x_username,
+                x_user_id=x_user_id or "",
+                x_username=x_username or "",
                 cookies_data=encrypted_cookies,
             )
 
@@ -589,17 +600,16 @@ async def confirm_publish(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await query.edit_message_text("🔄 جاري النشر على X...")
 
             cookies = json.loads(decrypt_token(user.cookies_data, FERNET_KEY))
-            client = XBrowserClient(cookies)
-
-            media_path = None
-            if data.get("media_file_id"):
-                media_path = await download_media(
-                    context, data["media_file_id"], user.id
+            async with XBrowserClient(cookies) as client:
+                media_path = None
+                if data.get("media_file_id"):
+                    media_path = await download_media(
+                        context, data["media_file_id"], user.id
+                    )
+                tweet_id = await client.post_tweet(
+                    data["content"],
+                    media_path=media_path,
                 )
-            tweet_id = await client.post_tweet(
-                data["content"],
-                media_path=media_path,
-            )
 
             delete_at = datetime.utcnow() + timedelta(minutes=data["delete_minutes"])
             repeat_count = data.get("repeat_count", 1)
@@ -745,8 +755,8 @@ async def delete_post_by_id(query, context: ContextTypes.DEFAULT_TYPE, post_id: 
         if post.tweet_id and user.cookies_data:
             try:
                 cookies = json.loads(decrypt_token(user.cookies_data, FERNET_KEY))
-                client = XBrowserClient(cookies)
-                await client.delete_tweet(post.tweet_id)
+                async with XBrowserClient(cookies) as client:
+                    await client.delete_tweet(post.tweet_id)
                 logger.info(f"Deleted tweet {post.tweet_id} for user {user.id}")
             except Exception as e:
                 logger.error(f"Failed to delete tweet {post.tweet_id}: {e}")

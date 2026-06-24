@@ -10,6 +10,12 @@ class XBrowserClient:
     def __init__(self, cookies: list):
         self._http = XHTTPClient(cookies)
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        await self._http.close()
+
     async def post_tweet(self, text: str, media_path: Optional[str] = None) -> str:
         return await self._http.post_tweet(text, media_path)
 

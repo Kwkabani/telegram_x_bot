@@ -24,11 +24,13 @@ def setup_logging() -> None:
     ))
     root_logger.addHandler(file_handler)
 
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter(
-        "%(levelname)s: %(message)s"
-    ))
-    root_logger.addHandler(console_handler)
+    is_render = os.environ.get("RENDER", "") == "true" or os.environ.get("PORT", "")
+    if not is_render:
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(logging.Formatter(
+            "%(levelname)s: %(message)s"
+        ))
+        root_logger.addHandler(console_handler)
 
 
 def encrypt_token(token: str, key: str) -> str:

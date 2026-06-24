@@ -33,9 +33,6 @@ WEB_PORT: int = int(os.environ.get("WEB_PORT", "8080"))
 ADMIN_TELEGRAM_ID: int = int(os.environ.get("ADMIN_TELEGRAM_ID", "0"))
 ADMIN_PASSWORD: str = os.environ.get("ADMIN_PASSWORD", "admin123")
 
-# Dashboard
-DASHBOARD_PORT: int = int(os.environ.get("DASHBOARD_PORT", "5000"))
-
 # Rate limits
 MAX_ACTIVE_POSTS: int = int(os.environ.get("MAX_ACTIVE_POSTS", "7"))
 MAX_POSTS_PER_HOUR: int = int(os.environ.get("MAX_POSTS_PER_HOUR", "7"))
