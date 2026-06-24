@@ -5,7 +5,7 @@ import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 
 import aiohttp
 import tweepy
@@ -46,7 +46,7 @@ def get_auth_url(telegram_id: int) -> str:
         "code_challenge_method": "S256",
     }
 
-    return "https://twitter.com/i/oauth2/authorize?" + urlencode(params)
+    return "https://x.com/i/oauth2/authorize?" + urlencode(params, quote_via=quote)
 
 
 async def exchange_code(telegram_id: int, code: str) -> Tuple[str, str, int]:
@@ -61,7 +61,7 @@ async def exchange_code(telegram_id: int, code: str) -> Tuple[str, str, int]:
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
-            "https://api.twitter.com/2/oauth2/token",
+            "https://api.x.com/2/oauth2/token",
             data={
                 "grant_type": "authorization_code",
                 "code": code,
@@ -87,7 +87,7 @@ async def refresh_oauth_token(refresh_token: str) -> Tuple[str, str, int]:
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
-            "https://api.twitter.com/2/oauth2/token",
+            "https://api.x.com/2/oauth2/token",
             data={
                 "grant_type": "refresh_token",
                 "refresh_token": refresh_token,
