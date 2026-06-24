@@ -5,6 +5,7 @@ import sys
 from typing import Optional
 
 from playwright.async_api import async_playwright, Browser, BrowserContext
+from playwright_stealth import Stealth
 
 logger = logging.getLogger(__name__)
 
@@ -33,23 +34,6 @@ async def _ensure_browser_installed(progress_callback=None) -> None:
             f"{stdout.decode(errors='replace') if stdout else 'unknown'}"
         )
     logger.info("Chromium browser installed")
-
-STEALTH_SCRIPT = """
-Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-window.chrome = { runtime: {} };
-const originalQuery = window.navigator.permissions.query;
-window.navigator.permissions.query = (parameters) => (
-    parameters.name === 'notifications' ?
-        Promise.resolve({ state: Notification.permission }) :
-        originalQuery(parameters)
-);
-Object.defineProperty(navigator, 'plugins', {
-    get: () => [1, 2, 3, 4, 5],
-});
-Object.defineProperty(navigator, 'languages', {
-    get: () => ['en-US', 'en'],
-});
-"""
 
 
 class PlaywrightManager:
@@ -97,7 +81,7 @@ class PlaywrightManager:
             locale="en-US",
             timezone_id="America/New_York",
         )
-        await context.add_init_script(STEALTH_SCRIPT)
+        await Stealth().apply_stealth_async(context)
         if cookies:
             await context.add_cookies(cookies)
         return context

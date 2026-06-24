@@ -215,9 +215,22 @@ async def receive_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
     except Exception as e:
         logger.error(f"Login error: {e}")
+        error_msg = str(e)
+        if "timed out" in error_msg.lower() or "timeout" in error_msg.lower():
+            display = "⏱️ انتهت مهلة تسجيل الدخول (بطء الشبكة أو X يمنع الأتمتة). حاول مرة أخرى لاحقاً."
+        elif "verify_email" in error_msg.lower() or "email" in error_msg.lower():
+            display = "📧 X يطلب تأكيد البريد الإلكتروني. تفقد بريدك وأكد الدخول، ثم حاول مرة أخرى."
+        elif "unusual" in error_msg.lower() or "suspicious" in error_msg.lower():
+            display = "🔒 X اكتشف محاولة دخول غير معتادة. سجل الدخول من متصفح هاتفك أولاً لتأكيد الحساب."
+        elif "no cookies" in error_msg.lower():
+            display = "❌ لم يتم استلام كوكيز بعد تسجيل الدخول. حاول مرة أخرى."
+        elif "2FA" in error_msg:
+            display = "🔐 مطلوب رمز تحقق (2FA). أرسل الرمز المستلم."
+        else:
+            display = "❌ فشل تسجيل الدخول. تحقق من اسم المستخدم وكلمة المرور."
         await context.bot.send_message(
             chat_id=chat_id,
-            text="❌ فشل تسجيل الدخول. تحقق من البيانات وحاول مرة أخرى.",
+            text=display,
             reply_markup=login_keyboard(),
         )
         context.user_data.pop("x_username_input", None)
