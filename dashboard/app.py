@@ -9,14 +9,26 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import select, func, text
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
-from config import ADMIN_PASSWORD, PROJECT_ROOT
-from db.base import async_session_factory, init_db
+from config import ADMIN_PASSWORD, PROJECT_ROOT, DATABASE_URL
 from db.models import User, Post, PostStatus
 from db.repository import UserRepository, PostRepository
 from db.config_store import (
     get_all_messages, get_message, set_message, get_config, set_config,
     is_bot_paused, set_bot_paused, DEFAULT_MESSAGES, DEFAULT_CONFIG,
+)
+
+_dashboard_engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    connect_args={"check_same_thread": False},
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=5,
+)
+_dashboard_session_factory = async_sessionmaker(
+    _dashboard_engine, class_=AsyncSession, expire_on_commit=False
 )
 
 logger = logging.getLogger(__name__)
@@ -100,7 +112,7 @@ async def logout():
 @app.get("/", response_class=HTMLResponse)
 @require_auth
 async def overview(request: Request):
-    async with async_session_factory() as session:
+    async with _dashboard_session_factory() as session:
         total_users = (await session.execute(
             select(func.count(User.id))
         )).scalar() or 0
@@ -148,7 +160,7 @@ async def overview(request: Request):
 @app.get("/users", response_class=HTMLResponse)
 @require_auth
 async def users_page(request: Request, search: str = ""):
-    async with async_session_factory() as session:
+    async with _dashboard_session_factory() as session:
         if search:
             from sqlalchemy import cast, String
             result = await session.execute(
@@ -181,7 +193,7 @@ async def users_page(request: Request, search: str = ""):
 @app.post("/users/{user_id}/disconnect")
 @require_auth
 async def disconnect_user(request: Request, user_id: int):
-    async with async_session_factory() as session:
+    async with _dashboard_session_factory() as session:
         repo = UserRepository(session)
         user = await repo.get_by_id(user_id)
         if user:
@@ -199,7 +211,7 @@ async def disconnect_user(request: Request, user_id: int):
 @app.post("/users/{user_id}/delete")
 @require_auth
 async def delete_user(request: Request, user_id: int):
-    async with async_session_factory() as session:
+    async with _dashboard_session_factory() as session:
         repo = UserRepository(session)
         user = await repo.get_by_id(user_id)
         if user:
@@ -210,7 +222,7 @@ async def delete_user(request: Request, user_id: int):
 @app.post("/users/{user_id}/ban")
 @require_auth
 async def ban_user(request: Request, user_id: int):
-    async with async_session_factory() as session:
+    async with _dashboard_session_factory() as session:
         repo = UserRepository(session)
         user = await repo.get_by_id(user_id)
         if user:
@@ -221,7 +233,7 @@ async def ban_user(request: Request, user_id: int):
 @app.get("/posts", response_class=HTMLResponse)
 @require_auth
 async def posts_page(request: Request, status: str = "", user_id: int = 0):
-    async with async_session_factory() as session:
+    async with _dashboard_session_factory() as session:
         query = select(Post, User.x_username).join(User, Post.user_id == User.id)
 
         if status:
@@ -253,7 +265,7 @@ async def posts_page(request: Request, status: str = "", user_id: int = 0):
 @app.post("/posts/{post_id}/delete")
 @require_auth
 async def delete_post(request: Request, post_id: int):
-    async with async_session_factory() as session:
+    async with _dashboard_session_factory() as session:
         post_repo = PostRepository(session)
         post = await post_repo.get_by_id(post_id)
         if post:
@@ -293,7 +305,7 @@ async def settings_page(request: Request, tab: str = "messages"):
     messages = await get_all_messages()
     paused = await is_bot_paused()
 
-    async with async_session_factory() as session:
+    async with _dashboard_session_factory() as session:
         total_users = (await session.execute(select(func.count(User.id)))).scalar() or 0
         total_posts = (await session.execute(select(func.count(Post.id)))).scalar() or 0
         active_posts = (await session.execute(select(func.count(Post.id)).where(Post.status == PostStatus.PUBLISHED))).scalar() or 0

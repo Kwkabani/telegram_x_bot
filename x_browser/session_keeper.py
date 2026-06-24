@@ -2,7 +2,9 @@ import json
 import logging
 
 import httpx
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from db.repository import UserRepository
 from utils import decrypt_token
 
 logger = logging.getLogger(__name__)
@@ -15,14 +17,12 @@ USER_AGENT = (
 
 
 class SessionKeeper:
-    def __init__(self, session_factory, fernet_key: str):
+    def __init__(self, session_factory: async_sessionmaker, fernet_key: str):
         self._session_factory = session_factory
         self._fernet_key = fernet_key
 
     async def refresh_all_sessions(self):
-        session = self._session_factory()
-        async with session:
-            from db.repository import UserRepository
+        async with self._session_factory() as session:
             repo = UserRepository(session)
             users = await repo.get_all()
             for user in users:

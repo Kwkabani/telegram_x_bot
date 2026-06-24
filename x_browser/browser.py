@@ -39,6 +39,7 @@ async def _ensure_browser_installed(progress_callback=None) -> None:
 class PlaywrightManager:
     _instance = None
     _browser: Optional[Browser] = None
+    _pw = None
 
     def __init__(self):
         self._lock = asyncio.Lock()
@@ -53,8 +54,10 @@ class PlaywrightManager:
         async with self._lock:
             if self._browser is None or not self._browser.is_connected():
                 await _ensure_browser_installed(progress_callback)
-                pw = await async_playwright().start()
-                self._browser = await pw.chromium.launch(
+                if self._pw:
+                    await self._pw.stop()
+                self._pw = await async_playwright().start()
+                self._browser = await self._pw.chromium.launch(
                     headless=True,
                     args=[
                         "--no-sandbox",
@@ -94,3 +97,6 @@ class PlaywrightManager:
             if self._browser:
                 await self._browser.close()
                 self._browser = None
+            if self._pw:
+                await self._pw.stop()
+                self._pw = None

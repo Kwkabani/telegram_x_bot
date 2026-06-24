@@ -110,7 +110,6 @@ class ReproductionManager:
                     except Exception:
                         pass
 
-            await session.commit()
         return published_count
 
     def _generate_variation(

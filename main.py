@@ -12,13 +12,14 @@ from telegram import error as telegram_error
 from telegram.ext import Application, CommandHandler
 from telegram.request import HTTPXRequest
 
-from config import BOT_TOKEN, WEB_PORT, PROJECT_ROOT
+from config import BOT_TOKEN, WEB_PORT, PROJECT_ROOT, FERNET_KEY
 from singleton import BotSingleton
 from db.base import init_db, async_session_factory
 from bot.handlers import get_conversation_handler, start, notify_admin
 from scheduler.sweeper import PostSweeper
 from scheduler.reproductions import ReproductionManager
 from scheduler.health import HealthMonitor
+from x_browser.session_keeper import SessionKeeper
 from utils import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ async def post_init(application: Application) -> None:
     sweeper = PostSweeper(session_factory)
     reproduction_mgr = ReproductionManager(session_factory)
     health_monitor = HealthMonitor(session_factory)
+    session_keeper = SessionKeeper(session_factory, FERNET_KEY)
 
     scheduler.add_job(
         sweeper.sweep,
@@ -59,6 +61,15 @@ async def post_init(application: Application) -> None:
         id="repeat_checker",
         name="Check and process post repeats",
         misfire_grace_time=30,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        session_keeper.refresh_all_sessions,
+        "interval",
+        hours=1,
+        id="session_keeper",
+        name="Check and mark expired sessions",
+        misfire_grace_time=300,
         replace_existing=True,
     )
     scheduler.add_job(

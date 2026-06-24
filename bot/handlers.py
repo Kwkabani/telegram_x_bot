@@ -59,16 +59,6 @@ logger = logging.getLogger(__name__)
 TEMP_DIR = PROJECT_ROOT / "temp"
 
 
-async def get_user_repo() -> UserRepository:
-    session = async_session_factory()
-    return UserRepository(session)
-
-
-async def get_post_repo() -> PostRepository:
-    session = async_session_factory()
-    return PostRepository(session)
-
-
 async def notify_admin(bot, message: str):
     if ADMIN_TELEGRAM_ID:
         try:
@@ -872,7 +862,7 @@ async def handle_confirm_logout(update: Update, context: ContextTypes.DEFAULT_TY
                     oauth_refresh_token="",
                     token_expires_at=None,
                     cookies_data="",
-                    needs_login=False,
+                    needs_login=True,
                     default_delete_minutes=0,
                     default_repeat_count=1,
                     cooldown_minutes=0,
